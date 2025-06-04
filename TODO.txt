@@ -1,0 +1,19 @@
+10 requests
+67.05 kB / 66.61 kB transferred
+Finish: 24.83 s
+DOMContentLoaded: 93 ms
+load: 131 ms
+generateArticleOnly
+http://localhost:63342/git2wp/index.html:654:40
+onclick
+http://localhost:63342/git2wp/index.html:1:37
+
+8 requests
+66.66 kB / 65.61 kB transferred
+Finish: 7.03 s
+DOMContentLoaded: 87 ms
+load: 116 ms
+generateArticleOnly
+http://localhost:63342/git2wp/index.html:654:40
+onclick
+http://localhost:63342/git2wp/index.html:1:1
