@@ -522,6 +522,88 @@
             }
         }
 
+        // Generate article only (without publishing)
+        function generateArticleOnly() {
+            if (!gitData.projects || gitData.projects.length === 0) {
+                showStatus('Najpierw przeskanuj projekty Git', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('generateText');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading-spinner"></span>Generowanie...';
+
+            const statusEl = showStatus('🤖 Generowanie artykułu przy użyciu AI...', 'loading');
+
+            const ollamaUrl = document.getElementById('ollamaUrl').value;
+            const model = document.getElementById('ollamaModel').value;
+            const customTitle = document.getElementById('articleTitle').value;
+
+            fetch(`${API_BASE}/generate-article`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    gitData,
+                    ollamaUrl,
+                    model,
+                    customTitle
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    generatedArticle = result.article;
+
+                    // Show preview with edit option
+                    const previewDiv = document.getElementById('articlePreview');
+                    previewDiv.innerHTML = `
+                        <h3>📝 Wygenerowany artykuł:</h3>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Edytuj artykuł przed publikacją:</label>
+                            <textarea id="editableArticle" style="width: 100%; height: 300px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; font-family: monospace; font-size: 14px; background: white;">${generatedArticle}</textarea>
+                        </div>
+                        <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #f8f9fa;">
+                            <h4>👁️ Podgląd renderowania:</h4>
+                            <div id="renderedPreview" style="background: white; padding: 15px; border-radius: 5px; margin-top: 10px;">
+                                ${generatedArticle}
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                            <strong>📊 Metadane:</strong> ${result.metadata.projects} projektów, ${result.metadata.totalCommits} commitów
+                        </div>
+                    `;
+
+                    document.getElementById('previewSection').style.display = 'block';
+                    document.getElementById('generatePublishBtn').style.display = 'block';
+
+                    // Add live preview update
+                    setTimeout(() => {
+                        const editableTextarea = document.getElementById('editableArticle');
+                        const renderedPreview = document.getElementById('renderedPreview');
+
+                        if (editableTextarea && renderedPreview) {
+                            editableTextarea.addEventListener('input', function() {
+                                generatedArticle = this.value;
+                                renderedPreview.innerHTML = this.value;
+                            });
+                        }
+                    }, 100);
+
+                    statusEl.remove();
+                    showStatus('✅ Artykuł wygenerowany pomyślnie! Możesz go teraz przejrzeć i opublikować.', 'success');
+                } else {
+                    throw new Error(result.error);
+                }
+            })
+            .catch(error => {
+                statusEl.remove();
+                showStatus(`❌ Błąd generowania artykułu: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                btn.textContent = originalText;
+            });
+        }
+
         // Display Git projects
         function displayGitProjects(data) {
             const projectsDiv = document.getElementById('gitProjects');
@@ -691,7 +773,7 @@
         }
 
         // Publish to WordPress
-        async function publishToWordPress() {
+        function publishToWordPress() {
             // Get edited article content
             const editableTextarea = document.getElementById('editableArticle');
             if (editableTextarea) {
@@ -709,47 +791,71 @@
 
             const statusEl = showStatus('🚀 Publikowanie artykułu na WordPress...', 'loading');
 
-            try {
-                const category = document.getElementById('articleCategory').value;
-                const tags = document.getElementById('articleTags').value;
-                const customTitle = document.getElementById('articleTitle').value;
+            const category = document.getElementById('articleCategory').value;
+            const tags = document.getElementById('articleTags').value;
+            const customTitle = document.getElementById('articleTitle').value;
 
-                const response = await fetch(`${API_BASE}/publish-wordpress`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        wpUrl: wpConfig.url,
-                        wpUsername: wpConfig.username,
-                        wpPassword: wpConfig.password,
-                        article: generatedArticle,
-                        title: customTitle,
-                        category: category,
-                        tags: tags,
-                        gitData: gitData
-                    })
-                });
-
-                const result = await response.json();
-
+            fetch(`${API_BASE}/publish-wordpress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    wpUrl: wpConfig.url,
+                    wpUsername: wpConfig.username,
+                    wpPassword: wpConfig.password,
+                    article: generatedArticle,
+                    title: customTitle,
+                    category: category,
+                    tags: tags,
+                    gitData: gitData
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
                 if (result.success) {
                     statusEl.remove();
                     showStatus(`✅ Artykuł opublikowany pomyślnie! <a href="${result.post.link}" target="_blank" style="color: white; text-decoration: underline;">Zobacz artykuł</a>`, 'success');
                 } else {
                     throw new Error(result.error);
                 }
-
-            } catch (error) {
+            })
+            .catch(error => {
                 statusEl.remove();
                 showStatus(`❌ Błąd publikacji: ${error.message}`, 'error');
-            } finally {
+            })
+            .finally(() => {
                 btn.disabled = false;
                 btn.textContent = '🚀 Publikuj na WordPress';
-            }
+            });
         }
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
             showStatus('💡 Skonfiguruj wszystkie sekcje, a następnie wygeneruj artykuł na podstawie aktywności Git!', 'success');
+
+            // Debug: Check if functions are available
+            console.log('Functions available:', {
+                generateArticleOnly: typeof generateArticleOnly,
+                generateAndPublishArticle: typeof generateAndPublishArticle,
+                publishToWordPress: typeof publishToWordPress,
+                testWordPressConnection: typeof testWordPressConnection,
+                testOllamaConnection: typeof testOllamaConnection,
+                scanGitProjects: typeof scanGitProjects
+            });
+        });
+
+        // Make functions globally available
+        window.generateArticleOnly = generateArticleOnly;
+        window.generateAndPublishArticle = generateAndPublishArticle;
+        window.publishToWordPress = publishToWordPress;
+        window.testWordPressConnection = testWordPressConnection;
+        window.testOllamaConnection = testOllamaConnection;
+        window.scanGitProjects = scanGitProjects;
+
+        // Debug: Check if window functions are available
+        console.log('Window functions available:', {
+            generateArticleOnly: typeof window.generateArticleOnly,
+            generateAndPublishArticle: typeof window.generateAndPublishArticle,
+            publishToWordPress: typeof window.publishToWordPress
         });
     </script>
 </body>
