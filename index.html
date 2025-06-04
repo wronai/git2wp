@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordPress Git Publisher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .form-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-left: 5px solid #3498db;
+        }
+
+        .form-section h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: #3498db;
+            background: white;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #219a52);
+        }
+
+        .btn-success:hover {
+            box-shadow: 0 10px 20px rgba(39, 174, 96, 0.3);
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+
+        .status.loading {
+            background: #e3f2fd;
+            color: #1565c0;
+            border-left: 4px solid #2196f3;
+        }
+
+        .status.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border-left: 4px solid #4caf50;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #f44336;
+        }
+
+        .git-projects {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .project-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-left: 4px solid #e74c3c;
+            transition: transform 0.3s ease;
+        }
+
+        .project-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .project-card.active {
+            border-left-color: #27ae60;
+            background: #f8fff8;
+        }
+
+        .project-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .commit-count {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+        }
+
+        .preview-content {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #e1e8ed;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .preview-content h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .icon {
+            font-size: 1.2rem;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .git-projects {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 WordPress Git Publisher</h1>
+            <p>Automatyczne generowanie artykułów na podstawie aktywności Git z wykorzystaniem AI</p>
+        </div>
+
+        <div class="main-content">
+            <!-- WordPress Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">🔗</span> Konfiguracja WordPress</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="wpUrl">URL WordPress</label>
+                        <input type="url" id="wpUrl" placeholder="https://example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="wpUsername">Nazwa użytkownika</label>
+                        <input type="text" id="wpUsername" placeholder="admin" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="wpPassword">Application Password</label>
+                    <input type="password" id="wpPassword" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" required>
+                </div>
+                <button class="btn" onclick="testWordPressConnection()">
+                    <span id="testWpText">🔍 Testuj połączenie</span>
+                </button>
+            </div>
+
+            <!-- Ollama Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">🤖</span> Konfiguracja Ollama</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ollamaUrl">URL Ollama</label>
+                        <input type="url" id="ollamaUrl" value="http://localhost:11434" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ollamaModel">Model</label>
+                        <select id="ollamaModel">
+                            <option value="mistral:7b">Mistral 7B</option>
+                            <option value="llama2:7b">Llama2 7B</option>
+                            <option value="codellama:7b">CodeLlama 7B</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn" onclick="testOllamaConnection()">
+                    <span id="testOllamaText">🔍 Testuj Ollama</span>
+                </button>
+            </div>
+
+            <!-- Git Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">📁</span> Konfiguracja Git</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="githubPath">Ścieżka do folderów GitHub</label>
+                        <input type="text" id="githubPath" placeholder="/home/user/github" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="selectedDate">Data analizy</label>
+                        <input type="date" id="selectedDate" required>
+                    </div>
+                </div>
+                <button class="btn" onclick="scanGitProjects()">
+                    <span id="scanGitText">📊 Skanuj projekty Git</span>
+                </button>
+            </div>
+
+            <!-- Git Projects Display -->
+            <div id="gitProjectsSection" style="display: none;">
+                <div class="form-section">
+                    <h2><span class="icon">📈</span> Znalezione projekty i commity</h2>
+                    <div id="gitProjects" class="git-projects"></div>
+                </div>
+            </div>
+
+            <!-- Article Generation -->
+            <div class="form-section">
+                <h2><span class="icon">✏️</span> Generowanie artykułu</h2>
+                <div class="form-group">
+                    <label for="articleTitle">Tytuł artykułu (opcjonalny)</label>
+                    <input type="text" id="articleTitle" placeholder="Zostanie wygenerowany automatycznie">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="articleCategory">Kategoria</label>
+                        <input type="text" id="articleCategory" placeholder="Development, Updates, itp.">
+                    </div>
+                    <div class="form-group">
+                        <label for="articleTags">Tagi (oddzielone przecinkami)</label>
+                        <input type="text" id="articleTags" placeholder="git, development, progress">
+                    </div>
+                </div>
+                <button class="btn btn-success" onclick="generateAndPublishArticle()" id="generateBtn">
+                    <span id="generateText">🎯 Generuj i publikuj artykuł</span>
+                </button>
+            </div>
+
+            <!-- Preview Section -->
+            <div id="previewSection" style="display: none;">
+                <div class="form-section">
+                    <h2><span class="icon">👁️</span> Podgląd wygenerowanego artykułu</h2>
+                    <div id="articlePreview" class="preview-content"></div>
+                    <button class="btn btn-success" onclick="publishToWordPress()" id="publishBtn">
+                        🚀 Publikuj na WordPress
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status Messages -->
+            <div id="statusMessages"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let gitData = {};
+        let generatedArticle = '';
+        let wpConfig = {};
+
+        // Set today's date as default
+        document.getElementById('selectedDate').value = new Date().toISOString().split('T')[0];
+
+        // Status message helper
+        function showStatus(message, type = 'loading') {
+            const statusDiv = document.getElementById('statusMessages');
+            const statusElement = document.createElement('div');
+            statusElement.className = `status ${type}`;
+            statusElement.innerHTML = type === 'loading' ? 
+                `<span class="loading-spinner"></span>${message}` : message;
+            
+            statusDiv.appendChild(statusElement);
+            
+            if (type !== 'loading') {
+                setTimeout(() => statusElement.remove(), 5000);
+            }
+            
+            return statusElement;
+        }
+
+        // Test WordPress connection
+        async function testWordPressConnection() {
+            const url = document.getElementById('wpUrl').value;
+            const username = document.getElementById('wpUsername').value;
+            const password = document.getElementById('wpPassword').value;
+            
+            if (!url || !username || !password) {
+                showStatus('Wypełnij wszystkie pola WordPress', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('testWpText');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading-spinner"></span>Testowanie...';
+
+            try {
+                // Test WordPress REST API
+                const authHeader = btoa(`${username}:${password}`);
+                const response = await fetch(`${url}/wp-json/wp/v2/users/me`, {
+                    headers: {
+                        'Authorization': `Basic ${authHeader}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    wpConfig = { url, username, password, authHeader };
+                    showStatus('✅ Połączenie z WordPress pomyślne!', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                showStatus(`❌ Błąd połączenia z WordPress: ${error.message}`, 'error');
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        // Test Ollama connection
+        async function testOllamaConnection() {
+            const url = document.getElementById('ollamaUrl').value;
+            const model = document.getElementById('ollamaModel').value;
+            
+            const btn = document.getElementById('testOllamaText');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading-spinner"></span>Testowanie...';
+
+            try {
+                // Test Ollama API
+                const response = await fetch(`${url}/api/tags`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const hasModel = data.models?.some(m => m.name.includes(model.split(':')[0]));
+                    
+                    if (hasModel) {
+                        showStatus('✅ Ollama działa i ma wymagany model!', 'success');
+                    } else {
+                        showStatus(`⚠️ Ollama działa, ale brak modelu ${model}. Pobierz: ollama pull ${model}`, 'error');
+                    }
+                } else {
+                    throw new Error('Ollama nie odpowiada');
+                }
+            } catch (error) {
+                showStatus(`❌ Błąd połączenia z Ollama: ${error.message}`, 'error');
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        // Mock function for Git scanning (in real app this would call backend)
+        async function scanGitProjects() {
+            const githubPath = document.getElementById('githubPath').value;
+            const selectedDate = document.getElementById('selectedDate').value;
+            
+            if (!githubPath || !selectedDate) {
+                showStatus('Wypełnij ścieżkę GitHub i datę', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('scanGitText');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading-spinner"></span>Skanowanie...';
+
+            try {
+                // Simulate Git scanning
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Mock data - in real app this would scan actual Git repos
+                gitData = {
+                    projects: [
+                        {
+                            name: 'project-alpha',
+                            path: `${githubPath}/project-alpha`,
+                            commits: [
+                                {
+                                    hash: 'abc123',
+                                    message: 'Added new authentication system',
+                                    author: 'developer',
+                                    date: selectedDate,
+                                    files: ['src/auth.js', 'tests/auth.test.js']
+                                },
+                                {
+                                    hash: 'def456',
+                                    message: 'Fixed database connection bug',
+                                    author: 'developer',
+                                    date: selectedDate,
+                                    files: ['src/db.js']
+                                }
+                            ]
+                        },
+                        {
+                            name: 'website-beta',
+                            path: `${githubPath}/website-beta`,
+                            commits: [
+                                {
+                                    hash: 'ghi789',
+                                    message: 'Updated homepage design',
+                                    author: 'designer',
+                                    date: selectedDate,
+                                    files: ['src/components/Home.vue', 'src/styles/main.css']
+                                }
+                            ]
+                        }
+                    ],
+                    date: selectedDate
+                };
+
+                displayGitProjects(gitData);
+                showStatus(`✅ Znaleziono ${gitData.projects.length} projektów z commitami z dnia ${selectedDate}`, 'success');
+                
+            } catch (error) {
+                showStatus(`❌ Błąd skanowania: ${error.message}`, 'error');
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        // Display Git projects
+        function displayGitProjects(data) {
+            const projectsDiv = document.getElementById('gitProjects');
+            const sectionDiv = document.getElementById('gitProjectsSection');
+            
+            projectsDiv.innerHTML = '';
+            
+            data.projects.forEach(project => {
+                const projectCard = document.createElement('div');
+                projectCard.className = 'project-card active';
+                projectCard.innerHTML = `
+                    <div class="project-name">📁 ${project.name}</div>
+                    <div class="commit-count">💾 ${project.commits.length} commitów</div>
+                    <div style="margin-top: 10px; font-size: 0.9em; color: #555;">
+                        ${project.commits.map(c => `• ${c.message}`).join('<br>')}
+                    </div>
+                `;
+                projectsDiv.appendChild(projectCard);
+            });
+            
+            sectionDiv.style.display = 'block';
+        }
+
+        // Generate article using Ollama
+        async function generateArticle() {
+            const ollamaUrl = document.getElementById('ollamaUrl').value;
+            const model = document.getElementById('ollamaModel').value;
+            const customTitle = document.getElementById('articleTitle').value;
+            
+            if (!gitData.projects || gitData.projects.length === 0) {
+                throw new Error('Brak danych Git do analizy');
+            }
+
+            // Prepare prompt
+            const projectSummary = gitData.projects.map(project => {
+                const commitDetails = project.commits.map(commit => 
+                    `- ${commit.message} (${commit.files.join(', ')})`
+                ).join('\n');
+                
+                return `Projekt: ${project.name}\nCommity:\n${commitDetails}`;
+            }).join('\n\n');
+
+            const prompt = `
+Napisz profesjonalny artykuł na bloga o dzisiejszych postępach w projektach programistycznych.
+
+Data: ${gitData.date}
+${customTitle ? `Preferowany tytuł: ${customTitle}` : ''}
+
+Szczegóły projektów i commitów:
+${projectSummary}
+
+Artykuł powinien:
+- Mieć profesjonalny, ale przystępny ton
+- Zawierać konkretne informacje o postępach
+- Być napisany w języku polskim
+- Mieć strukturę: tytuł, wprowadzenie, sekcje dla każdego projektu, podsumowanie
+- Zawierać elementy HTML dla formatowania
+- Być około 500-800 słów
+
+Napisz kompletny artykuł w formacie HTML:
+`;
+
+            const response = await fetch(`${ollamaUrl}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: model,
+                    prompt: prompt,
+                    stream: false
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Ollama API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.response;
+        }
+
+        // Generate and show preview
+        async function generateAndPublishArticle() {
+            if (!wpConfig.authHeader) {
+                showStatus('Najpierw przetestuj połączenie z WordPress', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('generateText');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading-spinner"></span>Generowanie...';
+            
+            const statusEl = showStatus('🤖 Generowanie artykułu przy użyciu AI...', 'loading');
+
+            try {
+                generatedArticle = await generateArticle();
+                
+                // Show preview
+                const previewDiv = document.getElementById('articlePreview');
+                previewDiv.innerHTML = `
+                    <h3>📝 Wygenerowany artykuł:</h3>
+                    <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: white;">
+                        ${generatedArticle}
+                    </div>
+                `;
+                
+                document.getElementById('previewSection').style.display = 'block';
+                statusEl.remove();
+                showStatus('✅ Artykuł wygenerowany pomyślnie!', 'success');
+                
+            } catch (error) {
+                statusEl.remove();
+                showStatus(`❌ Błąd generowania artykułu: ${error.message}`, 'error');
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        // Publish to WordPress
+        async function publishToWordPress() {
+            if (!generatedArticle || !wpConfig.authHeader) {
+                showStatus('Brak artykułu do publikacji lub konfiguracji WordPress', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('publishBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading-spinner"></span>Publikowanie...';
+            
+            const statusEl = showStatus('🚀 Publikowanie artykułu na WordPress...', 'loading');
+
+            try {
+                const category = document.getElementById('articleCategory').value;
+                const tags = document.getElementById('articleTags').value;
+                
+                // Extract title from generated article
+                const titleMatch = generatedArticle.match(/<h1[^>]*>(.*?)<\/h1>|<title[^>]*>(.*?)<\/title>/i);
+                const extractedTitle = titleMatch ? (titleMatch[1] || titleMatch[2]) : 
+                    `Postępy w projektach - ${gitData.date}`;
+
+                const postData = {
+                    title: extractedTitle,
+                    content: generatedArticle,
+                    status: 'publish',
+                    excerpt: `Podsumowanie postępów w projektach z dnia ${gitData.date}`,
+                    categories: category ? [category] : [],
+                    tags: tags ? tags.split(',').map(t => t.trim()) : [],
+                    meta: {
+                        git_projects: JSON.stringify(gitData.projects.map(p => p.name)),
+                        generation_date: new Date().toISOString(),
+                        source_date: gitData.date
+                    }
+                };
+
+                const response = await fetch(`${wpConfig.url}/wp-json/wp/v2/posts`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Basic ${wpConfig.authHeader}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(postData)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    statusEl.remove();
+                    showStatus(`✅ Artykuł opublikowany pomyślnie! <a href="${result.link}" target="_blank">Zobacz artykuł</a>`, 'success');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.message || `HTTP ${response.status}`);
+                }
+                
+            } catch (error) {
+                statusEl.remove();
+                showStatus(`❌ Błąd publikacji: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 Publikuj na WordPress';
+            }
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            showStatus('💡 Skonfiguruj wszystkie sekcje, a następnie wygeneruj artykuł na podstawie aktywności Git!', 'success');
+        });
+    </script>
+</body>
+</html>
