@@ -9,10 +9,28 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Enhanced CORS configuration
+const corsOptions = {
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.static('public'));
+
+// Log all requests
+app.use((req, res, next) => {
+  log(`[${req.method}] ${req.originalUrl}`, 'debug');
+  next();
+});
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 // Logging helper
 const log = (message, type = 'info') => {
@@ -252,6 +270,40 @@ class OllamaClient {
             };
         }
     }
+
+    /**
+     * Generate article with streaming support
+     * @param {string} prompt - The prompt to generate text from
+     * @param {string} model - The model to use for generation
+     * @returns {Promise<Stream>} A readable stream of the generated content
+     */
+    async generateArticleStream(prompt, model = 'llama2') {
+        try {
+            log(`Rozpoczynanie generowania strumieniowego z modelem: ${model}`);
+            
+            // Use axios with responseType: 'stream' to get a stream
+            const response = await axios({
+                method: 'post',
+                url: `${this.baseUrl}/api/generate`,
+                data: {
+                    model: model,
+                    prompt: prompt,
+                    stream: true,
+                    options: {
+                        temperature: 0.7,
+                        top_p: 0.9,
+                        top_k: 40
+                    }
+                },
+                responseType: 'stream'
+            });
+
+            return response.data;
+        } catch (error) {
+            log(`Błąd generowania strumieniowego artykułu: ${error.message}`, 'error');
+            throw error;
+        }
+    }
 }
 
 // WordPress helper class
@@ -366,7 +418,9 @@ app.post('/api/test-ollama', async (req, res) => {
 });
 
 // Scan Git projects
-app.post('/api/scan-git', async (req, res) => {
+app.post('/api/scan-git', cors(corsOptions), async (req, res) => {
+  log('Received request to /api/scan-git', 'debug');
+  log(`Request body: ${JSON.stringify(req.body)}`, 'debug');
     try {
         const { githubPath, selectedDate } = req.body;
 
@@ -393,7 +447,69 @@ app.post('/api/scan-git', async (req, res) => {
     }
 });
 
-// Generate article
+// Generate article with streaming support
+app.get('/api/generate-article-stream', async (req, res) => {
+    try {
+        const requestData = JSON.parse(req.query.data);
+        const { gitData, ollamaUrl, model, customTitle } = requestData;
+
+        if (!gitData || !gitData.projects || gitData.projects.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Brak danych Git do analizy'
+            });
+        }
+
+        if (ollamaUrl) {
+            ollamaClient.baseUrl = ollamaUrl;
+        }
+
+        // Set headers for SSE
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        });
+
+        // Send initial message
+        res.write('event: status\ndata: Rozpoczynam generowanie artykułu...\n\n');
+
+        // Prepare the prompt
+        const project = gitData.projects[0];
+        const prompt = `Na podstawie poniższych zmian w repozytorium Git, stwórz szczegółowy artykuł techniczny w języku polskim. Uwzględnij kontekst zmian, ich znaczenie i potencjalny wpływ na projekt.
+
+${JSON.stringify(project, null, 2)}
+
+Napisz kompletny artykuł w HTML:`;
+
+        // Generate article with streaming
+        const stream = await ollamaClient.generateArticleStream(prompt, model);
+        
+        stream.on('data', (chunk) => {
+            const content = chunk.toString();
+            if (content.trim()) {
+                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+            }
+        });
+
+        stream.on('end', () => {
+            res.write('event: end\ndata: [DONE]\n\n');
+            res.end();
+        });
+
+        stream.on('error', (error) => {
+            console.error('Stream error:', error);
+            res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+            res.end();
+        });
+    } catch (error) {
+        console.error('Error in generate-article-stream:', error);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+    }
+});
+
+// Original generate article endpoint (kept for backward compatibility)
 app.post('/api/generate-article', async (req, res) => {
     try {
         const { gitData, ollamaUrl, model, customTitle } = req.body;

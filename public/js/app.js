@@ -1,3 +1,6 @@
+// Configuration
+const API_BASE_URL = 'http://localhost:3001';
+
 // Global variables
 let gitData = {};
 let selectedProject = null;
@@ -42,13 +45,13 @@ async function testWordPressConnection() {
     showStatus('Testowanie połączenia z WordPress...', 'loading');
     
     try {
-        const response = await fetch('/test-wordpress', {
+        const response = await fetch(`${API_BASE_URL}/api/test-wordpress`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                wordpressUrl,
+                url: wordpressUrl,
                 username,
                 password
             })
@@ -75,7 +78,7 @@ async function testOllamaConnection() {
     showStatus('Testowanie połączenia z Ollama...', 'loading');
     
     try {
-        const response = await fetch('/test-ollama', {
+        const response = await fetch(`${API_BASE_URL}/api/test-ollama`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -99,30 +102,36 @@ async function testOllamaConnection() {
  * Scans for Git projects
  */
 async function scanGitProjects() {
-    const directory = document.getElementById('directoryPath').value;
+    const githubPath = document.getElementById('githubPath').value;
+    const selectedDate = document.getElementById('selectedDate').value;
     
-    if (!directory) {
+    if (!githubPath) {
         showStatus('Proszę podać ścieżkę do katalogu z projektami', 'error');
+        return;
+    }
+    
+    if (!selectedDate) {
+        showStatus('Proszę wybrać datę analizy', 'error');
         return;
     }
     
     showStatus('Skanowanie projektów Git...', 'loading');
     
     try {
-        const response = await fetch('/scan-git', {
+        const response = await fetch(`${API_BASE_URL}/api/scan-git`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ directory })
+            body: JSON.stringify({ githubPath, selectedDate })
         });
         
         const data = await response.json();
         
-        if (response.ok) {
-            gitData = data;
-            displayGitProjects(data.projects);
-            showStatus(`Znaleziono ${data.projects.length} projektów Git`, 'success');
+        if (response.ok && data.success) {
+            gitData = data.data;  // The projects are in data.data
+            displayGitProjects(data.data.projects);
+            showStatus(`Znaleziono ${data.data.projects.length} projektów Git`, 'success');
         } else {
             showStatus(`❌ Błąd: ${data.error || 'Nieznany błąd'}`, 'error');
         }
@@ -137,18 +146,28 @@ async function scanGitProjects() {
  */
 function displayGitProjects(projects) {
     const projectsContainer = document.getElementById('gitProjects');
+    const projectsSection = document.getElementById('gitProjectsSection');
     
-    if (!projectsContainer) return;
-    
-    if (!projects || projects.length === 0) {
-        projectsContainer.innerHTML = '<p>Brak projektów do wyświetlenia</p>';
+    if (!projectsContainer || !projectsSection) {
+        console.error('Required elements not found');
         return;
     }
     
+    if (!projects || projects.length === 0) {
+        projectsContainer.innerHTML = '<p>Brak projektów do wyświetlenia</p>';
+        projectsSection.style.display = 'block';
+        return;
+    }
+    
+    // Show the projects section
+    projectsSection.style.display = 'block';
+    
+    // Generate project cards
     projectsContainer.innerHTML = projects.map((project, index) => `
         <div class="project-card ${selectedProject === index ? 'project-card--active' : ''}" 
              onclick="selectProject(${index})">
             <div class="project-card__name">${project.name}</div>
+            <div class="project-card__path">${project.path}</div>
             <div class="project-card__commits">${project.commits.length} commitów</div>
         </div>
     `).join('');
@@ -161,50 +180,128 @@ function displayGitProjects(projects) {
 function selectProject(index) {
     selectedProject = index;
     displayGitProjects(gitData.projects);
-    document.getElementById('generateArticleBtn').disabled = false;
+    // Enable generate button when project is selected
+    document.getElementById('generateBtn').disabled = false;
+    document.getElementById('generatePublishBtn').style.display = 'inline-block';
+    
+    // Update UI to show which project is selected
+    const projectCards = document.querySelectorAll('.project-card');
+    projectCards.forEach((card, i) => {
+        if (i === index) {
+            card.classList.add('project-card--active');
+        } else {
+            card.classList.remove('project-card--active');
+        }
+    });
 }
 
 /**
  * Generates an article based on the selected project
  */
 async function generateArticle() {
-    if (selectedProject === null) {
+    if (selectedProject === null || !gitData.projects || !gitData.projects[selectedProject]) {
         showStatus('Proszę wybrać projekt', 'error');
         return;
     }
     
+    // Check if WordPress URL is provided
+    const wordpressUrl = document.getElementById('wordpressUrl').value;
+    if (!wordpressUrl) {
+        showStatus('Proszę podać adres URL WordPress', 'error');
+        return;
+    }
+    
     const project = gitData.projects[selectedProject];
-    const ollamaUrl = document.getElementById('ollamaUrl').value || 'http://localhost:11434';
+    const ollamaUrl = document.getElementById('ollamaUrl').value || 'http://localhost:11437';
     const customPrompt = document.getElementById('customPrompt').value;
     
+    // Show loading state
     showStatus('Generowanie artykułu...', 'loading');
     
+    // Clear previous article and show preview section
+    const previewSection = document.getElementById('previewSection');
+    const articlePreview = document.getElementById('articlePreview');
+    articlePreview.innerHTML = '<div class="loading-dots">Generuję artykuł<span>.</span><span>.</span><span>.</span></div>';
+    previewSection.style.display = 'block';
+    
+    // Scroll to preview section
+    previewSection.scrollIntoView({ behavior: 'smooth' });
+    
     try {
-        const response = await fetch('/generate-article', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
+        // Format the data to match server's expected structure
+        const requestData = {
+            gitData: {
+                projects: [project]
             },
-            body: JSON.stringify({
-                project,
-                ollamaUrl,
-                customPrompt
-            })
-        });
+            ollamaUrl: ollamaUrl,
+            model: 'llama2',
+            customTitle: customPrompt || `Podsumowanie projektu ${project.name}`,
+            stream: true  // Request streaming response
+        };
         
-        const data = await response.json();
-        
-        if (response.ok) {
-            generatedArticle = data.article;
-            document.getElementById('articlePreview').innerHTML = generatedArticle;
-            document.getElementById('previewSection').style.display = 'block';
-            document.getElementById('publishBtn').disabled = false;
-            showStatus('Artykuł wygenerowany pomyślnie!', 'success');
-        } else {
-            showStatus(`❌ Błąd: ${data.error || 'Nieznany błąd'}`, 'error');
+        // Check if Ollama is accessible
+        try {
+            const ollamaCheck = await fetch(`${ollamaUrl}/api/tags`);
+            if (!ollamaCheck.ok) {
+                throw new Error('Nie można połączyć się z serwerem Ollama');
+            }
+        } catch (error) {
+            showStatus(`❌ Błąd połączenia z Ollama: ${error.message}. Upewnij się, że serwer Ollama jest uruchomiony.`, 'error');
+            return;
         }
+
+        console.log('Sending request to generate article:', requestData);
+
+        // Use EventSource for server-sent events (SSE) for real-time updates
+        const eventSource = new EventSource(
+            `${API_BASE_URL}/api/generate-article-stream?` + 
+            new URLSearchParams({
+                data: JSON.stringify(requestData)
+            })
+        );
+        
+        let fullArticle = '';
+        
+        eventSource.onmessage = (event) => {
+            if (event.data === '[DONE]') {
+                eventSource.close();
+                document.getElementById('publishBtn').disabled = false;
+                showStatus('Artykuł wygenerowany pomyślnie!', 'success');
+                return;
+            }
+            
+            try {
+                const chunk = JSON.parse(event.data);
+                if (chunk.content) {
+                    fullArticle += chunk.content;
+                    articlePreview.innerHTML = fullArticle + 
+                        '<div class="typing-indicator">|</div>';
+                    
+                    // Auto-scroll to bottom
+                    articlePreview.scrollTop = articlePreview.scrollHeight;
+                }
+            } catch (e) {
+                console.error('Error parsing chunk:', e);
+            }
+        };
+        
+        eventSource.onerror = (error) => {
+            console.error('EventSource failed:', error);
+            eventSource.close();
+            showStatus('❌ Wystąpił błąd podczas generowania artykułu', 'error');
+        };
     } catch (error) {
         showStatus(`❌ Błąd: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Generates and immediately publishes an article
+ */
+async function generateAndPublishArticle() {
+    await generateArticle();
+    if (generatedArticle) {
+        await publishArticle();
     }
 }
 
@@ -225,7 +322,7 @@ async function publishArticle() {
     showStatus('Publikowanie artykułu...', 'loading');
     
     try {
-        const response = await fetch('/publish-article', {
+        const response = await fetch(`${API_BASE_URL}/api/publish-wordpress`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -251,17 +348,66 @@ async function publishArticle() {
     }
 }
 
+// Function to open WordPress admin
+function openWordPressAdmin() {
+    const wordpressUrl = document.getElementById('wordpressUrl').value.trim();
+    if (!wordpressUrl) {
+        showStatus('Proszę podać adres URL WordPress', 'error');
+        return;
+    }
+    
+    // Ensure the URL has the correct format
+    let adminUrl = wordpressUrl;
+    if (!adminUrl.endsWith('/')) {
+        adminUrl += '/';
+    }
+    if (!adminUrl.includes('wp-admin')) {
+        adminUrl += 'wp-admin/';
+    }
+    
+    // Open in a new tab
+    window.open(adminUrl, '_blank');
+}
+
 // Initialize the application when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
     // Set up event listeners
-    document.getElementById('testWordPressBtn').addEventListener('click', testWordPressConnection);
-    document.getElementById('testOllamaBtn').addEventListener('click', testOllamaConnection);
-    document.getElementById('scanGitBtn').addEventListener('click', scanGitProjects);
-    document.getElementById('generateArticleBtn').addEventListener('click', generateArticle);
-    document.getElementById('publishBtn').addEventListener('click', publishArticle);
+    document.getElementById('goToWordPressBtn')?.addEventListener('click', openWordPressAdmin);
+    document.getElementById('testWordPressBtn')?.addEventListener('click', testWordPressConnection);
+    document.getElementById('testOllamaBtn')?.addEventListener('click', testOllamaConnection);
+    document.getElementById('scanGitBtn')?.addEventListener('click', scanGitProjects);
+    document.getElementById('generateBtn')?.addEventListener('click', generateArticle);
+    document.getElementById('generatePublishBtn')?.addEventListener('click', generateAndPublishArticle);
+    document.getElementById('regenerateBtn')?.addEventListener('click', generateArticle);
+    document.getElementById('publishBtn')?.addEventListener('click', publishArticle);
     
-    // Disable buttons that require project selection initially
-    document.getElementById('generateArticleBtn').disabled = true;
+    // Alias for backward compatibility
+    window.generateArticleOnly = generateArticle;
+    window.testWordPressConnection = testWordPressConnection;
+    window.testOllamaConnection = testOllamaConnection;
+    window.scanGitProjects = scanGitProjects;
+    window.publishToWordPress = publishArticle;
+    
+    // Initialize UI state
+    document.getElementById('generateBtn').disabled = true;
+    document.getElementById('generatePublishBtn').style.display = 'none';
+    document.getElementById('publishBtn').disabled = true;
+    
+    // Add help text for WordPress Application Password
+    const wordpressPasswordHelp = document.createElement('div');
+    wordpressPasswordHelp.className = 'help-text';
+    wordpressPasswordHelp.innerHTML = `
+        <p><strong>Jak uzyskać Application Password w WordPress:</strong></p>
+        <ol>
+            <li>Zaloguj się do panelu administracyjnego WordPress</li>
+            <li>Przejdź do Profil > Application Passwords</li>
+            <li>Wpisz nazwę aplikacji (np. "Git Publisher")</li>
+            <li>Kliknij "Add New"</li>
+            <li>Skopiuj wygenerowane hasło i wklej je w polu powyżej</li>
+        </ol>
+        <p><em>Uwaga: Hasło wyświetli się tylko raz, więc zapisz je w bezpiecznym miejscu.</em></p>
+    `;
+    document.getElementById('wordpressPassword').insertAdjacentElement('afterend', wordpressPasswordHelp);
     document.getElementById('publishBtn').disabled = true;
     
     // Show initial status message
