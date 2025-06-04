@@ -1,3 +1,7 @@
+.venv
+.env
+venv
+.idea
 # Logs
 logs
 *.log

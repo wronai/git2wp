@@ -1,0 +1,8 @@
+wordpress-git-publisher/
+├── .env.example
+├── .gitignore
+├── README.md
+├── package.json
+├── server.js
+└── public/
+    └── index.html

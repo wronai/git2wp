@@ -235,15 +235,15 @@
             .form-row {
                 grid-template-columns: 1fr;
             }
-            
+
             .header h1 {
                 font-size: 2rem;
             }
-            
+
             .main-content {
                 padding: 20px;
             }
-            
+
             .git-projects {
                 grid-template-columns: 1fr;
             }
@@ -381,15 +381,15 @@
             const statusDiv = document.getElementById('statusMessages');
             const statusElement = document.createElement('div');
             statusElement.className = `status ${type}`;
-            statusElement.innerHTML = type === 'loading' ? 
+            statusElement.innerHTML = type === 'loading' ?
                 `<span class="loading-spinner"></span>${message}` : message;
-            
+
             statusDiv.appendChild(statusElement);
-            
+
             if (type !== 'loading') {
                 setTimeout(() => statusElement.remove(), 5000);
             }
-            
+
             return statusElement;
         }
 
@@ -398,7 +398,7 @@
             const url = document.getElementById('wpUrl').value;
             const username = document.getElementById('wpUsername').value;
             const password = document.getElementById('wpPassword').value;
-            
+
             if (!url || !username || !password) {
                 showStatus('Wypełnij wszystkie pola WordPress', 'error');
                 return;
@@ -416,7 +416,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     wpConfig = { url, username, password };
                     showStatus(`✅ Połączenie z WordPress pomyślne! Zalogowano jako: ${result.user?.name || username}`, 'success');
@@ -434,7 +434,7 @@
         async function testOllamaConnection() {
             const url = document.getElementById('ollamaUrl').value;
             const model = document.getElementById('ollamaModel').value;
-            
+
             const btn = document.getElementById('testOllamaText');
             const originalText = btn.textContent;
             btn.innerHTML = '<span class="loading-spinner"></span>Testowanie...';
@@ -447,10 +447,10 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     const hasModel = result.models?.some(m => m.name.includes(model.split(':')[0]));
-                    
+
                     if (hasModel) {
                         showStatus('✅ Ollama działa i ma wymagany model!', 'success');
                     } else {
@@ -470,7 +470,7 @@
         async function scanGitProjects() {
             const githubPath = document.getElementById('githubPath').value;
             const selectedDate = document.getElementById('selectedDate').value;
-            
+
             if (!githubPath || !selectedDate) {
                 showStatus('Wypełnij ścieżkę GitHub i datę', 'error');
                 return;
@@ -488,7 +488,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     gitData = result.data;
                     displayGitProjects(gitData);
@@ -496,7 +496,7 @@
                 } else {
                     throw new Error(result.error);
                 }
-                
+
             } catch (error) {
                 showStatus(`❌ Błąd skanowania: ${error.message}`, 'error');
             } finally {
@@ -508,13 +508,13 @@
         function displayGitProjects(data) {
             const projectsDiv = document.getElementById('gitProjects');
             const sectionDiv = document.getElementById('gitProjectsSection');
-            
+
             projectsDiv.innerHTML = '';
-            
+
             data.projects.forEach(project => {
                 const totalInsertions = project.commits.reduce((sum, c) => sum + (c.stats?.insertions || 0), 0);
                 const totalDeletions = project.commits.reduce((sum, c) => sum + (c.stats?.deletions || 0), 0);
-                
+
                 const projectCard = document.createElement('div');
                 projectCard.className = 'project-card active';
                 projectCard.innerHTML = `
@@ -529,7 +529,7 @@
                 `;
                 projectsDiv.appendChild(projectCard);
             });
-            
+
             sectionDiv.style.display = 'block';
         }
 
@@ -548,7 +548,7 @@
             const btn = document.getElementById('generateText');
             const originalText = btn.textContent;
             btn.innerHTML = '<span class="loading-spinner"></span>Generowanie...';
-            
+
             const statusEl = showStatus('🤖 Generowanie artykułu przy użyciu AI...', 'loading');
 
             try {
@@ -568,10 +568,10 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     generatedArticle = result.article;
-                    
+
                     // Show preview
                     const previewDiv = document.getElementById('articlePreview');
                     previewDiv.innerHTML = `
@@ -583,14 +583,14 @@
                             <strong>Metadane:</strong> ${result.metadata.projects} projektów, ${result.metadata.totalCommits} commitów
                         </div>
                     `;
-                    
+
                     document.getElementById('previewSection').style.display = 'block';
                     statusEl.remove();
                     showStatus('✅ Artykuł wygenerowany pomyślnie!', 'success');
                 } else {
                     throw new Error(result.error);
                 }
-                
+
             } catch (error) {
                 statusEl.remove();
                 showStatus(`❌ Błąd generowania artykułu: ${error.message}`, 'error');
@@ -633,14 +633,14 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     statusEl.remove();
                     showStatus(`✅ Artykuł opublikowany pomyślnie! <a href="${result.post.link}" target="_blank" style="color: white; text-decoration: underline;">Zobacz artykuł</a>`, 'success');
                 } else {
                     throw new Error(result.error);
                 }
-                
+
             } catch (error) {
                 statusEl.remove();
                 showStatus(`❌ Błąd publikacji: ${error.message}`, 'error');
