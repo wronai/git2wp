@@ -235,15 +235,15 @@
             .form-row {
                 grid-template-columns: 1fr;
             }
-            
+
             .header h1 {
                 font-size: 2rem;
             }
-            
+
             .main-content {
                 padding: 20px;
             }
-            
+
             .git-projects {
                 grid-template-columns: 1fr;
             }
@@ -345,9 +345,18 @@
                         <input type="text" id="articleTags" placeholder="git, development, progress">
                     </div>
                 </div>
-                <button class="btn btn-success" onclick="generateAndPublishArticle()" id="generateBtn">
-                    <span id="generateText">🎯 Generuj i publikuj artykuł</span>
-                </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <button class="btn" onclick="generateArticleOnly()" id="generateBtn">
+                            <span id="generateText">🤖 Generuj artykuł</span>
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-success" onclick="generateAndPublishArticle()" id="generatePublishBtn" style="display: none;">
+                            <span id="generatePublishText">🎯 Generuj i publikuj od razu</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Preview Section -->
@@ -355,9 +364,18 @@
                 <div class="form-section">
                     <h2><span class="icon">👁️</span> Podgląd wygenerowanego artykułu</h2>
                     <div id="articlePreview" class="preview-content"></div>
-                    <button class="btn btn-success" onclick="publishToWordPress()" id="publishBtn">
-                        🚀 Publikuj na WordPress
-                    </button>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <button class="btn" onclick="generateArticleOnly()" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
+                                🔄 Regeneruj artykuł
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-success" onclick="publishToWordPress()" id="publishBtn">
+                                🚀 Publikuj na WordPress
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -381,15 +399,15 @@
             const statusDiv = document.getElementById('statusMessages');
             const statusElement = document.createElement('div');
             statusElement.className = `status ${type}`;
-            statusElement.innerHTML = type === 'loading' ? 
+            statusElement.innerHTML = type === 'loading' ?
                 `<span class="loading-spinner"></span>${message}` : message;
-            
+
             statusDiv.appendChild(statusElement);
-            
+
             if (type !== 'loading') {
                 setTimeout(() => statusElement.remove(), 5000);
             }
-            
+
             return statusElement;
         }
 
@@ -398,7 +416,7 @@
             const url = document.getElementById('wpUrl').value;
             const username = document.getElementById('wpUsername').value;
             const password = document.getElementById('wpPassword').value;
-            
+
             if (!url || !username || !password) {
                 showStatus('Wypełnij wszystkie pola WordPress', 'error');
                 return;
@@ -416,7 +434,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     wpConfig = { url, username, password };
                     showStatus(`✅ Połączenie z WordPress pomyślne! Zalogowano jako: ${result.user?.name || username}`, 'success');
@@ -434,7 +452,7 @@
         async function testOllamaConnection() {
             const url = document.getElementById('ollamaUrl').value;
             const model = document.getElementById('ollamaModel').value;
-            
+
             const btn = document.getElementById('testOllamaText');
             const originalText = btn.textContent;
             btn.innerHTML = '<span class="loading-spinner"></span>Testowanie...';
@@ -447,10 +465,10 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     const hasModel = result.models?.some(m => m.name.includes(model.split(':')[0]));
-                    
+
                     if (hasModel) {
                         showStatus('✅ Ollama działa i ma wymagany model!', 'success');
                     } else {
@@ -470,7 +488,7 @@
         async function scanGitProjects() {
             const githubPath = document.getElementById('githubPath').value;
             const selectedDate = document.getElementById('selectedDate').value;
-            
+
             if (!githubPath || !selectedDate) {
                 showStatus('Wypełnij ścieżkę GitHub i datę', 'error');
                 return;
@@ -488,7 +506,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     gitData = result.data;
                     displayGitProjects(gitData);
@@ -496,7 +514,7 @@
                 } else {
                     throw new Error(result.error);
                 }
-                
+
             } catch (error) {
                 showStatus(`❌ Błąd skanowania: ${error.message}`, 'error');
             } finally {
@@ -508,13 +526,13 @@
         function displayGitProjects(data) {
             const projectsDiv = document.getElementById('gitProjects');
             const sectionDiv = document.getElementById('gitProjectsSection');
-            
+
             projectsDiv.innerHTML = '';
-            
+
             data.projects.forEach(project => {
                 const totalInsertions = project.commits.reduce((sum, c) => sum + (c.stats?.insertions || 0), 0);
                 const totalDeletions = project.commits.reduce((sum, c) => sum + (c.stats?.deletions || 0), 0);
-                
+
                 const projectCard = document.createElement('div');
                 projectCard.className = 'project-card active';
                 projectCard.innerHTML = `
@@ -529,17 +547,12 @@
                 `;
                 projectsDiv.appendChild(projectCard);
             });
-            
+
             sectionDiv.style.display = 'block';
         }
 
-        // Generate and show preview
-        async function generateAndPublishArticle() {
-            if (!wpConfig.url) {
-                showStatus('Najpierw przetestuj połączenie z WordPress', 'error');
-                return;
-            }
-
+        // Generate article only (without publishing)
+        async function generateArticleOnly() {
             if (!gitData.projects || gitData.projects.length === 0) {
                 showStatus('Najpierw przeskanuj projekty Git', 'error');
                 return;
@@ -548,7 +561,7 @@
             const btn = document.getElementById('generateText');
             const originalText = btn.textContent;
             btn.innerHTML = '<span class="loading-spinner"></span>Generowanie...';
-            
+
             const statusEl = showStatus('🤖 Generowanie artykułu przy użyciu AI...', 'loading');
 
             try {
@@ -568,29 +581,107 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     generatedArticle = result.article;
-                    
-                    // Show preview
+
+                    // Show preview with edit option
                     const previewDiv = document.getElementById('articlePreview');
                     previewDiv.innerHTML = `
                         <h3>📝 Wygenerowany artykuł:</h3>
-                        <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: white;">
-                            ${generatedArticle}
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Edytuj artykuł przed publikacją:</label>
+                            <textarea id="editableArticle" style="width: 100%; height: 300px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; font-family: monospace; font-size: 14px; background: white;">${generatedArticle}</textarea>
                         </div>
-                        <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                            <strong>Metadane:</strong> ${result.metadata.projects} projektów, ${result.metadata.totalCommits} commitów
+                        <div style="border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #f8f9fa;">
+                            <h4>👁️ Podgląd renderowania:</h4>
+                            <div id="renderedPreview" style="background: white; padding: 15px; border-radius: 5px; margin-top: 10px;">
+                                ${generatedArticle}
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                            <strong>📊 Metadane:</strong> ${result.metadata.projects} projektów, ${result.metadata.totalCommits} commitów
                         </div>
                     `;
-                    
+
                     document.getElementById('previewSection').style.display = 'block';
+
+                    // Add live preview update
+                    setTimeout(() => {
+                        const editableTextarea = document.getElementById('editableArticle');
+                        const renderedPreview = document.getElementById('renderedPreview');
+
+                        editableTextarea.addEventListener('input', function() {
+                            generatedArticle = this.value;
+                            renderedPreview.innerHTML = this.value;
+                        });
+                    }, 100);
+
+                    // Show the direct publish button after generation
+                    document.getElementById('generatePublishBtn').style.display = 'block';
+
                     statusEl.remove();
-                    showStatus('✅ Artykuł wygenerowany pomyślnie!', 'success');
+                    showStatus('✅ Artykuł wygenerowany pomyślnie! Możesz go teraz przejrzeć i opublikować.', 'success');
                 } else {
                     throw new Error(result.error);
                 }
-                
+
+            } catch (error) {
+                statusEl.remove();
+                showStatus(`❌ Błąd generowania artykułu: ${error.message}`, 'error');
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        // Generate and show preview
+        async function generateAndPublishArticle() {
+            if (!wpConfig.url) {
+                showStatus('Najpierw przetestuj połączenie z WordPress', 'error');
+                return;
+            }
+
+            if (!gitData.projects || gitData.projects.length === 0) {
+                showStatus('Najpierw przeskanuj projekty Git', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('generatePublishText');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading-spinner"></span>Generowanie i publikowanie...';
+
+            const statusEl = showStatus('🤖 Generowanie artykułu przy użyciu AI...', 'loading');
+
+            try {
+                const ollamaUrl = document.getElementById('ollamaUrl').value;
+                const model = document.getElementById('ollamaModel').value;
+                const customTitle = document.getElementById('articleTitle').value;
+
+                const response = await fetch(`${API_BASE}/generate-article`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        gitData,
+                        ollamaUrl,
+                        model,
+                        customTitle
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    generatedArticle = result.article;
+
+                    statusEl.innerHTML = '<span class="loading-spinner"></span>🚀 Publikowanie artykułu na WordPress...';
+
+                    // Auto-publish immediately
+                    await publishToWordPress();
+
+                } else {
+                    throw new Error(result.error);
+                }
+
             } catch (error) {
                 statusEl.remove();
                 showStatus(`❌ Błąd generowania artykułu: ${error.message}`, 'error');
@@ -601,6 +692,12 @@
 
         // Publish to WordPress
         async function publishToWordPress() {
+            // Get edited article content
+            const editableTextarea = document.getElementById('editableArticle');
+            if (editableTextarea) {
+                generatedArticle = editableTextarea.value;
+            }
+
             if (!generatedArticle || !wpConfig.url) {
                 showStatus('Brak artykułu do publikacji lub konfiguracji WordPress', 'error');
                 return;
@@ -633,14 +730,14 @@
                 });
 
                 const result = await response.json();
-                
+
                 if (result.success) {
                     statusEl.remove();
                     showStatus(`✅ Artykuł opublikowany pomyślnie! <a href="${result.post.link}" target="_blank" style="color: white; text-decoration: underline;">Zobacz artykuł</a>`, 'success');
                 } else {
                     throw new Error(result.error);
                 }
-                
+
             } catch (error) {
                 statusEl.remove();
                 showStatus(`❌ Błąd publikacji: ${error.message}`, 'error');
@@ -654,7 +751,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             showStatus('💡 Skonfiguruj wszystkie sekcje, a następnie wygeneruj artykuł na podstawie aktywności Git!', 'success');
         });
-
     </script>
 </body>
 </html>
