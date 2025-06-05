@@ -1,0 +1,21 @@
+# 🎯 Project TODO List
+# Managed by LLM Task Controller
+
+- category: feature
+  description: Create basic project structure with proper organization
+  estimated_hours: 2
+  id: 1
+  priority: high
+  status: pending
+  subtasks:
+  - Create main directories
+  - Setup configuration files
+  - Initialize version control
+  title: Setup project structure
+- category: feature
+  description: Implement the main features of the application
+  estimated_hours: 4
+  id: 2
+  priority: high
+  status: pending
+  title: Implement core functionality

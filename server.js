@@ -693,13 +693,160 @@ class WordPressClient {
         console.log('Token is ' + (token ? 'set' : 'not set'));
     }
     
-    // ... (rest of WordPressClient class implementation)
+    /**
+     * Test WordPress connection
+     * @returns {Promise<Object>} Connection test result
+     */
+    async testConnection() {
+        try {
+            const response = await axios.get(`${this.baseUrl}/wp-json/wp/v2/posts`, {
+                auth: {
+                    username: this.username,
+                    password: this.token
+                },
+                params: {
+                    per_page: 1,
+                    page: 1
+                },
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return {
+                success: true,
+                postsCount: response.headers['x-wp-total'] || 'unknown',
+                message: 'Successfully connected to WordPress'
+            };
+        } catch (error) {
+            console.error('WordPress connection error:', error.response?.data || error.message);
+            return {
+                success: false,
+                error: error.response?.data?.message || error.message || 'Failed to connect to WordPress'
+            };
+        }
+    }
+
+    /**
+     * Create a new post in WordPress
+     * @param {string} title - Post title
+     * @param {string} content - Post content
+     * @param {string} status - Post status (draft, publish, etc.)
+     * @returns {Promise<Object>} Created post data
+     */
+    async createPost(title, content, status = 'draft') {
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/wp-json/wp/v2/posts`,
+                {
+                    title,
+                    content,
+                    status
+                },
+                {
+                    auth: {
+                        username: this.username,
+                        password: this.token
+                    },
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            return {
+                success: true,
+                postId: response.data.id,
+                link: response.data.link,
+                message: 'Post created successfully'
+            };
+        } catch (error) {
+            console.error('Error creating WordPress post:', error.response?.data || error.message);
+            return {
+                success: false,
+                error: error.response?.data?.message || error.message || 'Failed to create post'
+            };
+        }
+    }
 }
 
 // Initialize services
 const gitScanner = new GitScanner();
 
 // API Routes
+
+// Test WordPress connection
+app.post('/api/wordpress/test', async (req, res) => {
+    const { url, username, password } = req.body;
+    
+    if (!url || !username || !password) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Missing required fields (url, username, password)' 
+        });
+    }
+    
+    try {
+        const wordpress = new WordPressClient(url, username, password);
+        const result = await wordpress.testConnection();
+        
+        if (result.success) {
+            res.json({
+                success: true,
+                message: result.message,
+                postsCount: result.postsCount
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to connect to WordPress'
+            });
+        }
+    } catch (error) {
+        console.error('Error testing WordPress connection:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error'
+        });
+    }
+});
+
+// Publish to WordPress
+app.post('/api/wordpress/publish', async (req, res) => {
+    const { url, username, password, title, content, status = 'draft' } = req.body;
+    
+    if (!url || !username || !password || !title || !content) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Missing required fields (url, username, password, title, content)' 
+        });
+    }
+    
+    try {
+        const wordpress = new WordPressClient(url, username, password);
+        const result = await wordpress.createPost(title, content, status);
+        
+        if (result.success) {
+            res.json({
+                success: true,
+                message: result.message,
+                postId: result.postId,
+                link: result.link
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to publish to WordPress'
+            });
+        }
+    } catch (error) {
+        console.error('Error publishing to WordPress:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error'
+        });
+    }
+});
 
 // Configuration endpoint
 app.get('/api/config', async (req, res) => {

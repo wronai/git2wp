@@ -1,0 +1,60 @@
+# 🎯 LLM Task Controller Configuration
+# Control LLM behavior, enforce best practices, maintain focus
+
+best_practices:
+  general:
+    consistent_formatting: true
+    descriptive_names: true
+    meaningful_comments: true
+    no_hardcoded_values: true
+    single_responsibility: true
+  javascript:
+    enforce_jsdoc: true
+    max_function_length: 30
+    naming_convention: camelCase
+    prefer_const: true
+    require_error_handling: true
+  python:
+    enforce_docstrings: true
+    enforce_type_hints: true
+    imports_organization: true
+    max_function_length: 50
+    naming_convention: snake_case
+    require_tests: true
+file_management:
+  max_files_at_once: 5
+  organize_by_feature: true
+  prevent_large_files: true
+  require_file_headers: true
+focus:
+  auto_changelog: true
+  max_files_per_task: 3
+  max_lines_per_file: 200
+  require_todo_completion: true
+  task_timeout_minutes: 30
+quality_gates:
+  complexity_limit: 10
+  security_scan: true
+  style_check: true
+  syntax_check: true
+  test_coverage: 80
+responses:
+  best_practice_violation: '📋 Best practice reminder: {practice}'
+  changelog_updated: '📝 Changelog updated with: {changes}'
+  focus_redirect: '🎯 Focus! Complete current task first: {current_task}'
+  quality_gate_failed: '🛑 Quality gate failed: {reason}'
+  task_complete: '✅ Task completed: {task}'
+todo_management:
+  auto_create_subtasks: true
+  categories:
+  - feature
+  - bugfix
+  - refactor
+  - test
+  - docs
+  priorities:
+  - high
+  - medium
+  - low
+  require_estimation: true
+  track_time: true

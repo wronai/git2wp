@@ -892,19 +892,64 @@ function editArticle() {
 async function publishArticle() {
     const articlePreview = document.getElementById('article-preview');
     const publishBtn = document.getElementById('publish-btn');
+    const wordpressUrl = document.getElementById('wordpressUrl').value.trim();
+    const username = document.getElementById('wordpressUsername').value.trim();
+    const password = document.getElementById('wordpressPassword').value.trim();
+    const articleTitle = document.getElementById('article-title').value.trim();
+    const articleContent = articlePreview.innerHTML;
+
+    if (!wordpressUrl || !username || !password) {
+        showStatus('Proszę skonfigurować połączenie z WordPress', 'error');
+        return;
+    }
+
+    if (!articleContent) {
+        showStatus('Brak zawartości artykułu do opublikowania', 'error');
+        return;
+    }
 
     try {
         publishBtn.classList.add('loading');
         publishBtn.disabled = true;
+        showStatus('Publikowanie artykułu...', 'loading');
 
-        // TODO: Implement WordPress publishing
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await fetch(`${API_BASE_URL}/wordpress/publish`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                url: wordpressUrl,
+                username,
+                password,
+                title: articleTitle || 'Podsumowanie zmian w projekcie',
+                content: articleContent,
+                status: 'draft' // Default to draft, can be changed to 'publish' later
+            })
+        });
 
-        alert('Article published successfully!');
+        const result = await response.json();
 
+        if (result.success) {
+            showStatus('✅ Artykuł został pomyślnie zapisany jako szkic w WordPress!', 'success');
+            if (result.link) {
+                // Add a button to view the post
+                const viewPostBtn = document.createElement('a');
+                viewPostBtn.href = result.link;
+                viewPostBtn.target = '_blank';
+                viewPostBtn.className = 'btn btn-secondary mt-2';
+                viewPostBtn.textContent = 'Zobacz post';
+                
+                const statusElement = document.querySelector('.status-message');
+                statusElement.appendChild(document.createElement('br'));
+                statusElement.appendChild(viewPostBtn);
+            }
+        } else {
+            throw new Error(result.error || 'Nieznany błąd podczas publikowania');
+        }
     } catch (error) {
         console.error('Error publishing article:', error);
-        alert(`Failed to publish article: ${error.message}`);
+        showStatus(`❌ Błąd podczas publikowania: ${error.message}`, 'error');
     } finally {
         publishBtn.classList.remove('loading');
         publishBtn.disabled = false;
