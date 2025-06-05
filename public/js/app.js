@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = window.APP_CONFIG.API_URL || window.location.origin;
 
 // Global variables
 let gitData = {};
@@ -212,8 +212,9 @@ async function generateArticle() {
     }
     
     const project = gitData.projects[selectedProject];
-    const ollamaUrl = document.getElementById('ollamaUrl').value || 'http://localhost:11437';
+    const ollamaUrl = document.getElementById('ollamaUrl').value || window.APP_CONFIG.OLLAMA_URL || 'http://localhost:11437';
     const customPrompt = document.getElementById('customPrompt').value;
+    const articleTitle = document.getElementById('articleTitle').value;
     
     // Show loading state
     showStatus('Generowanie artykułu...', 'loading');
@@ -221,7 +222,7 @@ async function generateArticle() {
     // Clear previous article and show preview section
     const previewSection = document.getElementById('previewSection');
     const articlePreview = document.getElementById('articlePreview');
-    articlePreview.innerHTML = '<div class="loading-dots">Generuję artykuł<span>.</span><span>.</span><span>.</span></div>';
+    articlePreview.innerHTML = '<div class="loading-dots">Łączenie z modelem AI<span>.</span><span>.</span><span>.</span></div>';
     previewSection.style.display = 'block';
     
     // Scroll to preview section
@@ -235,61 +236,98 @@ async function generateArticle() {
             },
             ollamaUrl: ollamaUrl,
             model: 'llama2',
-            customTitle: customPrompt || `Podsumowanie projektu ${project.name}`,
-            stream: true  // Request streaming response
+            customTitle: articleTitle || `Podsumowanie projektu ${project.name}`,
+            customPrompt: customPrompt || ''
         };
         
         // Check if Ollama is accessible
         try {
-            const ollamaCheck = await fetch(`${ollamaUrl}/api/tags`);
-            if (!ollamaCheck.ok) {
+            const response = await fetch(`${ollamaUrl}/api/tags`);
+            if (!response.ok) {
                 throw new Error('Nie można połączyć się z serwerem Ollama');
             }
+            const data = await response.json();
+            console.log('Available Ollama models:', data);
         } catch (error) {
             showStatus(`❌ Błąd połączenia z Ollama: ${error.message}. Upewnij się, że serwer Ollama jest uruchomiony.`, 'error');
             return;
         }
 
         console.log('Sending request to generate article:', requestData);
-
-        // Use EventSource for server-sent events (SSE) for real-time updates
-        const eventSource = new EventSource(
-            `${API_BASE_URL}/api/generate-article-stream?` + 
-            new URLSearchParams({
-                data: JSON.stringify(requestData)
-            })
-        );
         
+        // Clear any previous content
+        articlePreview.innerHTML = '<div class="loading-dots">Generuję artykuł<span>.</span><span>.</span><span>.</span></div>';
+        
+        // Use fetch with ReadableStream for better control
+        const response = await fetch(`${API_BASE_URL}/api/generate-article-stream?data=${encodeURIComponent(JSON.stringify(requestData))}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Błąd serwera: ${response.status} ${response.statusText}\n${error}`);
+        }
+        
+        if (!response.body) {
+            throw new Error('Brak danych w odpowiedzi serwera');
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
         let fullArticle = '';
         
-        eventSource.onmessage = (event) => {
-            if (event.data === '[DONE]') {
-                eventSource.close();
-                document.getElementById('publishBtn').disabled = false;
-                showStatus('Artykuł wygenerowany pomyślnie!', 'success');
-                return;
+        // Clear loading message
+        articlePreview.innerHTML = '';
+        
+        // Process the stream
+        while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+                console.log('Stream completed');
+                break;
             }
             
-            try {
-                const chunk = JSON.parse(event.data);
-                if (chunk.content) {
-                    fullArticle += chunk.content;
-                    articlePreview.innerHTML = fullArticle + 
-                        '<div class="typing-indicator">|</div>';
+            // Decode the chunk
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            // Process complete lines
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.substring(6).trim();
+                    if (data === '[DONE]') {
+                        console.log('Received DONE signal');
+                        document.getElementById('publishBtn').disabled = false;
+                        showStatus('Artykuł wygenerowany pomyślnie!', 'success');
+                        return;
+                    }
                     
-                    // Auto-scroll to bottom
-                    articlePreview.scrollTop = articlePreview.scrollHeight;
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.content) {
+                            fullArticle += parsed.content;
+                            articlePreview.innerHTML = fullArticle + 
+                                '<span class="typing-indicator">|</span>';
+                            
+                            // Auto-scroll to bottom
+                            articlePreview.scrollTop = articlePreview.scrollHeight;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing JSON:', e);
+                    }
                 }
-            } catch (e) {
-                console.error('Error parsing chunk:', e);
             }
-        };
-        
-        eventSource.onerror = (error) => {
-            console.error('EventSource failed:', error);
-            eventSource.close();
-            showStatus('❌ Wystąpił błąd podczas generowania artykułu', 'error');
-        };
+        }
     } catch (error) {
         showStatus(`❌ Błąd: ${error.message}`, 'error');
     }

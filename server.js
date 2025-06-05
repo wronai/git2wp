@@ -1,4 +1,5 @@
 // server.js - Backend dla WordPress Git Publisher
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs').promises;
@@ -225,7 +226,7 @@ class GitScanner {
 
 // Ollama helper class
 class OllamaClient {
-    constructor(baseUrl = 'http://localhost:11434') {
+    constructor(baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434') {
         this.baseUrl = baseUrl;
     }
 
@@ -281,7 +282,11 @@ class OllamaClient {
         try {
             log(`Rozpoczynanie generowania strumieniowego z modelem: ${model}`);
             
-            // Use axios with responseType: 'stream' to get a stream
+            // Create a new PassThrough stream
+            const { PassThrough } = require('stream');
+            const stream = new PassThrough();
+            
+            // Make the request to Ollama
             const response = await axios({
                 method: 'post',
                 url: `${this.baseUrl}/api/generate`,
@@ -297,8 +302,35 @@ class OllamaClient {
                 },
                 responseType: 'stream'
             });
-
-            return response.data;
+            
+            // Process the stream
+            let buffer = '';
+            response.data.on('data', (chunk) => {
+                const lines = chunk.toString().split('\n');
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    try {
+                        const data = JSON.parse(line);
+                        if (data.response) {
+                            // Send each token as it's generated
+                            stream.push(JSON.stringify({ response: data.response }));
+                        }
+                    } catch (e) {
+                        console.error('Error parsing line:', line);
+                    }
+                }
+            });
+            
+            response.data.on('end', () => {
+                stream.push(null); // Signal end of stream
+            });
+            
+            response.data.on('error', (error) => {
+                console.error('Stream error:', error);
+                stream.emit('error', error);
+            });
+            
+            return stream;
         } catch (error) {
             log(`Błąd generowania strumieniowego artykułu: ${error.message}`, 'error');
             throw error;
@@ -449,11 +481,17 @@ app.post('/api/scan-git', cors(corsOptions), async (req, res) => {
 
 // Generate article with streaming support
 app.get('/api/generate-article-stream', async (req, res) => {
+    console.log('Streaming endpoint hit');
+    
     try {
+        console.log('Parsing request data...');
         const requestData = JSON.parse(req.query.data);
-        const { gitData, ollamaUrl, model, customTitle } = requestData;
+        console.log('Request data:', JSON.stringify(requestData, null, 2));
+        
+        const { gitData, ollamaUrl, model = 'llama2', customTitle } = requestData;
 
         if (!gitData || !gitData.projects || gitData.projects.length === 0) {
+            console.error('No Git data provided');
             return res.status(400).json({
                 success: false,
                 error: 'Brak danych Git do analizy'
@@ -461,17 +499,23 @@ app.get('/api/generate-article-stream', async (req, res) => {
         }
 
         if (ollamaUrl) {
+            console.log(`Setting Ollama URL to: ${ollamaUrl}`);
             ollamaClient.baseUrl = ollamaUrl;
         }
 
         // Set headers for SSE
+        console.log('Setting SSE headers...');
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS'
         });
 
         // Send initial message
+        console.log('Sending initial SSE message...');
         res.write('event: status\ndata: Rozpoczynam generowanie artykułu...\n\n');
 
         // Prepare the prompt
@@ -482,26 +526,52 @@ ${JSON.stringify(project, null, 2)}
 
 Napisz kompletny artykuł w HTML:`;
 
-        // Generate article with streaming
-        const stream = await ollamaClient.generateArticleStream(prompt, model);
+        console.log('Generated prompt:', prompt.substring(0, 200) + '...');
         
-        stream.on('data', (chunk) => {
-            const content = chunk.toString();
-            if (content.trim()) {
-                res.write(`data: ${JSON.stringify({ content })}\n\n`);
-            }
-        });
+        try {
+            console.log('Calling Ollama generateArticleStream...');
+            const stream = await ollamaClient.generateArticleStream(prompt, model);
+            console.log('Ollama stream created');
+            
+            stream.on('data', (chunk) => {
+                const content = chunk.toString();
+                console.log('Received chunk:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
+                if (content.trim()) {
+                    try {
+                        const data = JSON.parse(content);
+                        if (data.response) {
+                            res.write(`data: ${JSON.stringify({ content: data.response })}\n\n`);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing chunk:', e);
+                    }
+                }
+            });
 
-        stream.on('end', () => {
-            res.write('event: end\ndata: [DONE]\n\n');
-            res.end();
-        });
+            stream.on('end', () => {
+                console.log('Stream ended');
+                res.write('event: end\ndata: [DONE]\n\n');
+                res.end();
+            });
 
-        stream.on('error', (error) => {
-            console.error('Stream error:', error);
+            stream.on('error', (error) => {
+                console.error('Stream error:', error);
+                res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+                res.end();
+            });
+            
+            // Handle client disconnect
+            req.on('close', () => {
+                console.log('Client disconnected');
+                stream.destroy();
+            });
+            
+        } catch (error) {
+            console.error('Error in Ollama stream:', error);
             res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
             res.end();
-        });
+        }
+        
     } catch (error) {
         console.error('Error in generate-article-stream:', error);
         res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
@@ -547,8 +617,11 @@ ${commitDetails}
 ${project.remote ? `Repository: ${project.remote}` : ''}`;
         }).join('\n\n');
 
+        // Get prompt prefix from environment or use default
+        const promptPrefix = process.env.PROMPT_PREFIX || `Jesteś profesjonalnym programistą i blogerem technicznym. Napisz artykuł na bloga o dzisiejszych postępach w projektach programistycznych.`;
+        
         const prompt = `
-Jesteś profesjonalnym programistą i blogerem technicznym. Napisz artykuł na bloga o dzisiejszych postępach w projektach programistycznych.
+${promptPrefix}
 
 INSTRUKCJE:
 - Napisz w języku polskim
@@ -558,6 +631,9 @@ INSTRUKCJE:
 - Dodaj konkretne przykłady z commitów
 - Podkreśl najważniejsze osiągnięcia
 - Dodaj sekcję podsumowującą
+- Użyj pierwszej osoby liczby pojedynczej (ja, mój, moje)
+- Zachowaj profesjonalny ton
+- Pisz w języku polskim
 
 DANE:
 Data: ${gitData.date}
