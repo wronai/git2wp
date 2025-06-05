@@ -27,6 +27,9 @@
     <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
 </head>
 <body>
+    <!-- Status Message Container -->
+    <div id="statusMessage" class="status"></div>
+    
     <div class="container">
         <header class="header">
             <h1 class="header__title">🚀 WordPress Git Publisher</h1>
@@ -84,6 +87,19 @@
                 </div>
                 <button class="btn" id="testOllamaBtn">
                     <span id="testOllamaText">🔍 Testuj Ollama</span>
+                </button>
+            </div>
+
+            <!-- Prompt Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">✏️</span> Konfiguracja Promptu</h2>
+                <div class="form-group">
+                    <label for="defaultPrompt">Domyślny prompt dla AI</label>
+                    <textarea id="defaultPrompt" rows="6" class="code-editor" placeholder="Wprowadź domyślny prompt..."></textarea>
+                    <p class="help-text">Ten prompt będzie używany jako podstawa do generowania artykułów. Możesz go dostosować przed każdym generowaniem.</p>
+                </div>
+                <button class="btn" id="savePromptBtn">
+                    <span id="savePromptText">💾 Zapisz prompt</span>
                 </button>
             </div>
 
@@ -173,9 +189,6 @@
         </div>
     </div>
 
-    <!-- Status Message Container -->
-    <div id="statusMessage" class="status"></div>
-    
     <!-- JavaScript -->
     <script src="js/app.js" defer></script>
     <script>

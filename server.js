@@ -226,8 +226,15 @@ class GitScanner {
 
 // Ollama helper class
 class OllamaClient {
-    constructor(baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434') {
-        this.baseUrl = baseUrl;
+    constructor(baseUrl = 'http://localhost:11434') {
+        // Ensure base URL is properly formatted
+        this.baseUrl = baseUrl.trim();
+        if (this.baseUrl.endsWith('/')) {
+            this.baseUrl = this.baseUrl.slice(0, -1);
+        }
+        
+        // Log the base URL being used
+        log(`OllamaClient initialized with base URL: ${this.baseUrl}`, 'debug');
     }
 
     async testConnection() {
@@ -280,57 +287,86 @@ class OllamaClient {
      */
     async generateArticleStream(prompt, model = 'llama2') {
         try {
-            log(`Rozpoczynanie generowania strumieniowego z modelem: ${model}`);
+            log(`Rozpoczynanie generowania strumieniowego z modelem: ${model}`, 'debug');
+            log(`Using Ollama base URL: ${this.baseUrl}`, 'debug');
             
             // Create a new PassThrough stream
             const { PassThrough } = require('stream');
             const stream = new PassThrough();
             
-            // Make the request to Ollama
-            const response = await axios({
-                method: 'post',
-                url: `${this.baseUrl}/api/generate`,
-                data: {
-                    model: model,
-                    prompt: prompt,
-                    stream: true,
-                    options: {
-                        temperature: 0.7,
-                        top_p: 0.9,
-                        top_k: 40
-                    }
-                },
-                responseType: 'stream'
-            });
+            // Build the API URL
+            const apiUrl = new URL('/api/generate', this.baseUrl).toString();
+            log(`Making request to: ${apiUrl}`, 'debug');
             
-            // Process the stream
-            let buffer = '';
-            response.data.on('data', (chunk) => {
-                const lines = chunk.toString().split('\n');
-                for (const line of lines) {
-                    if (line.trim() === '') continue;
+            try {
+                const response = await axios({
+                    method: 'post',
+                    url: apiUrl,
+                    data: {
+                        model: model,
+                        prompt: prompt,
+                        stream: true,
+                        options: {
+                            temperature: 0.7,
+                            top_p: 0.9,
+                            top_k: 40
+                        }
+                    },
+                    responseType: 'stream',
+                    timeout: 30000, // 30 second timeout
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                // Process the stream
+                let buffer = '';
+                response.data.on('data', (chunk) => {
                     try {
-                        const data = JSON.parse(line);
-                        if (data.response) {
-                            // Send each token as it's generated
-                            stream.push(JSON.stringify({ response: data.response }));
+                        const chunkStr = chunk.toString();
+                        buffer += chunkStr;
+                        
+                        // Process complete lines
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                        
+                        for (const line of lines) {
+                            if (!line.trim()) continue;
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.response) {
+                                    // Send each token as it's generated with proper JSON format
+                                    stream.write(JSON.stringify({ response: data.response }) + '\n');
+                                }
+                            } catch (e) {
+                                log(`Error parsing line: ${line}`, 'error');
+                                log(`Error details: ${e.message}`, 'debug');
+                            }
                         }
                     } catch (e) {
-                        console.error('Error parsing line:', line);
+                        log(`Error processing chunk: ${e.message}`, 'error');
                     }
+                });
+                
+                response.data.on('end', () => {
+                    stream.push(null); // Signal end of stream
+                });
+                
+                response.data.on('error', (error) => {
+                    console.error('Stream error:', error);
+                    stream.emit('error', error);
+                });
+                
+                return stream;
+            } catch (error) {
+                log(`Error making request to Ollama API: ${error.message}`, 'error');
+                if (error.response) {
+                    log(`Ollama API response status: ${error.response.status}`, 'error');
+                    log(`Ollama API response data: ${JSON.stringify(error.response.data)}`, 'error');
                 }
-            });
-            
-            response.data.on('end', () => {
-                stream.push(null); // Signal end of stream
-            });
-            
-            response.data.on('error', (error) => {
-                console.error('Stream error:', error);
-                stream.emit('error', error);
-            });
-            
-            return stream;
+                throw error;
+            }
         } catch (error) {
             log(`Błąd generowania strumieniowego artykułu: ${error.message}`, 'error');
             throw error;
@@ -340,9 +376,29 @@ class OllamaClient {
 
 // WordPress helper class
 class WordPressClient {
-    constructor(url, username, password) {
+    constructor(url, username, token) {
         this.baseUrl = url;
-        this.authHeader = Buffer.from(`${username}:${password}`).toString('base64');
+        this.username = username;
+        this.token = token;
+        
+        // Log the initialization (without showing the actual token for security)
+        console.log(`WordPress client initialized for: ${url}`);
+        console.log(`Using username: ${username}`);
+        console.log('Token is ' + (token ? 'set' : 'not set'));
+    }
+    
+    getAuthHeader() {
+        if (this.token) {
+            return {
+                'Authorization': `Basic ${Buffer.from(`${this.username}:${this.token}`).toString('base64')}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+        }
+        return {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
     }
 
     async testConnection() {
@@ -369,10 +425,7 @@ class WordPressClient {
         try {
             log('Publikowanie artykułu na WordPress');
             const response = await axios.post(`${this.baseUrl}/wp-json/wp/v2/posts`, postData, {
-                headers: {
-                    'Authorization': `Basic ${this.authHeader}`,
-                    'Content-Type': 'application/json'
-                }
+                headers: this.getAuthHeader()
             });
 
             return {
@@ -391,9 +444,91 @@ class WordPressClient {
 
 // Initialize services
 const gitScanner = new GitScanner();
-const ollamaClient = new OllamaClient();
+
+// Initialize Ollama client with environment variable or default
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+log(`Initializing Ollama client with URL: ${ollamaBaseUrl}`, 'info');
+const ollamaClient = new OllamaClient(ollamaBaseUrl);
+
+// Initialize WordPress client with token from environment
+const wpUrl = process.env.WORDPRESS_URL || '';
+const wpUsername = process.env.WORDPRESS_USERNAME || '';
+const wpToken = (process.env.WORDPRESS_TOKEN || '').replace(/["']/g, '').trim();
+
+log(`Initializing WordPress client for: ${wpUrl}`, 'info');
+const wordpressClient = new WordPressClient(wpUrl, wpUsername, wpToken);
+
+// Helper function to update .env file
+const updateEnvFile = async (key, value) => {
+    try {
+        const envPath = path.join(__dirname, '.env');
+        let envContent = await fs.readFile(envPath, 'utf8');
+        
+        // Update or add the key-value pair
+        const keyExists = envContent.includes(`${key}=`);
+        if (keyExists) {
+            envContent = envContent.replace(
+                new RegExp(`^${key}=.*$`, 'm'),
+                `${key}="${value.replace(/"/g, '\\"')}"`
+            );
+        } else {
+            envContent += `\n${key}="${value.replace(/"/g, '\\"')}"`;
+        }
+        
+        await fs.writeFile(envPath, envContent);
+        return true;
+    } catch (error) {
+        log(`Błąd aktualizacji pliku .env: ${error.message}`, 'error');
+        throw error;
+    }
+};
 
 // Routes
+
+// Get current prompt
+app.get('/api/config/prompt', (req, res) => {
+    try {
+        res.json({
+            success: true,
+            prompt: process.env.PROMPT_PREFIX || ''
+        });
+    } catch (error) {
+        log(`Błąd pobierania promptu: ${error.message}`, 'error');
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Update prompt
+app.post('/api/config/prompt', async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        if (!prompt) {
+            return res.status(400).json({
+                success: false,
+                error: 'Brak treści promptu'
+            });
+        }
+        
+        await updateEnvFile('PROMPT_PREFIX', prompt);
+        
+        // Update the in-memory environment variable
+        process.env.PROMPT_PREFIX = prompt;
+        
+        res.json({
+            success: true,
+            message: 'Prompt zaktualizowany pomyślnie'
+        });
+    } catch (error) {
+        log(`Błąd aktualizacji promptu: ${error.message}`, 'error');
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -488,7 +623,7 @@ app.get('/api/generate-article-stream', async (req, res) => {
         const requestData = JSON.parse(req.query.data);
         console.log('Request data:', JSON.stringify(requestData, null, 2));
         
-        const { gitData, ollamaUrl, model = 'llama2', customTitle } = requestData;
+        const { gitData, ollamaUrl, model = 'llama2', customTitle, customPrompt } = requestData;
 
         if (!gitData || !gitData.projects || gitData.projects.length === 0) {
             console.error('No Git data provided');
@@ -534,17 +669,29 @@ Napisz kompletny artykuł w HTML:`;
             console.log('Ollama stream created');
             
             stream.on('data', (chunk) => {
-                const content = chunk.toString();
-                console.log('Received chunk:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
-                if (content.trim()) {
+                try {
+                    const content = chunk.toString().trim();
+                    if (!content) return;
+                    
+                    console.log('Received chunk:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
+                    
+                    // Try to parse the chunk as JSON
                     try {
                         const data = JSON.parse(content);
-                        if (data.response) {
+                        if (data && data.response) {
+                            // Send as SSE formatted data
                             res.write(`data: ${JSON.stringify({ content: data.response })}\n\n`);
+                            // Flush the response to send data immediately
+                            if (res.flush) res.flush();
                         }
                     } catch (e) {
-                        console.error('Error parsing chunk:', e);
+                        console.error('Error parsing JSON chunk:', e);
+                        // If it's not JSON, send as raw text
+                        res.write(`data: ${JSON.stringify({ content: content })}\n\n`);
+                        if (res.flush) res.flush();
                     }
+                } catch (e) {
+                    console.error('Error processing chunk:', e);
                 }
             });
 
@@ -591,8 +738,15 @@ app.post('/api/generate-article', async (req, res) => {
             });
         }
 
+        // Initialize Ollama client with environment variable or default
+        const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+        log(`Initializing Ollama client with URL: ${ollamaBaseUrl}`, 'info');
+        const ollamaClient = new OllamaClient(ollamaBaseUrl);
+        log(`Using OLLAMA_BASE_URL from .env: ${process.env.OLLAMA_BASE_URL}`, 'debug');
         if (ollamaUrl) {
+            // Fallback to the URL from request if env var is not set
             ollamaClient.baseUrl = ollamaUrl;
+            log(`Using OLLAMA_BASE_URL from request: ${ollamaUrl}`, 'debug');
         }
 
         // Prepare detailed prompt
@@ -618,7 +772,10 @@ ${project.remote ? `Repository: ${project.remote}` : ''}`;
         }).join('\n\n');
 
         // Get prompt prefix from environment or use default
-        const promptPrefix = process.env.PROMPT_PREFIX || `Jesteś profesjonalnym programistą i blogerem technicznym. Napisz artykuł na bloga o dzisiejszych postępach w projektach programistycznych.`;
+        const defaultPrompt = process.env.PROMPT_PREFIX || `Jesteś profesjonalnym programistą i blogerem technicznym. Napisz artykuł na bloga o dzisiejszych postępach w projektach programistycznych.`;
+        
+        // Use custom prompt if provided, otherwise use the default
+        const promptPrefix = customPrompt || defaultPrompt;
         
         const prompt = `
 ${promptPrefix}

@@ -5,6 +5,7 @@ const API_BASE_URL = window.APP_CONFIG.API_URL || window.location.origin;
 let gitData = {};
 let selectedProject = null;
 let generatedArticle = '';
+let defaultPrompt = '';
 
 /**
  * Shows a status message to the user
@@ -15,15 +16,27 @@ function showStatus(message, type = 'loading') {
     const statusDiv = document.getElementById('statusMessage');
     if (!statusDiv) return;
     
+    // Always show the status div when called
+    statusDiv.style.display = 'flex';
     statusDiv.className = `status status--${type}`;
-    statusDiv.innerHTML = message;
+    statusDiv.innerHTML = `
+        <div class="status-content">
+            ${type === 'loading' ? '⏳' : type === 'success' ? '✅' : '❌'}
+            <span>${message}</span>
+        </div>
+    `;
     
     // Auto-hide success messages after 5 seconds
-    if (type === 'success') {
+    if (type !== 'loading') {
         setTimeout(() => {
-            if (statusDiv.className.includes('status--success')) {
-                statusDiv.className = 'status';
-                statusDiv.innerHTML = '';
+            if (statusDiv.className.includes(`status--${type}`)) {
+                statusDiv.style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                    statusDiv.className = 'status';
+                    statusDiv.innerHTML = '';
+                    statusDiv.style.animation = '';
+                }, 300);
             }
         }, 5000);
     }
@@ -198,6 +211,11 @@ function selectProject(index) {
 /**
  * Generates an article based on the selected project
  */
+async function getPromptPrefix() {
+    const customPrompt = document.getElementById('customPrompt')?.value || '';
+    return customPrompt || defaultPrompt || '';
+}
+
 async function generateArticle() {
     if (selectedProject === null || !gitData.projects || !gitData.projects[selectedProject]) {
         showStatus('Proszę wybrać projekt', 'error');
@@ -232,12 +250,13 @@ async function generateArticle() {
         // Format the data to match server's expected structure
         const requestData = {
             gitData: {
-                projects: [project]
+                projects: [project],
+                date: document.getElementById('selectedDate').value
             },
             ollamaUrl: ollamaUrl,
-            model: 'llama2',
-            customTitle: articleTitle || `Podsumowanie projektu ${project.name}`,
-            customPrompt: customPrompt || ''
+            model: document.getElementById('ollamaModel').value,
+            customTitle: document.getElementById('articleTitle').value || undefined,
+            customPrompt: getPromptPrefix()
         };
         
         // Check if Ollama is accessible
@@ -287,45 +306,76 @@ async function generateArticle() {
         
         // Process the stream
         while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-                console.log('Stream completed');
-                break;
-            }
-            
-            // Decode the chunk
-            const chunk = decoder.decode(value, { stream: true });
-            buffer += chunk;
-            
-            // Process complete lines
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || ''; // Keep incomplete line in buffer
-            
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.substring(6).trim();
-                    if (data === '[DONE]') {
-                        console.log('Received DONE signal');
-                        document.getElementById('publishBtn').disabled = false;
-                        showStatus('Artykuł wygenerowany pomyślnie!', 'success');
-                        return;
-                    }
+            try {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    console.log('Stream completed');
+                    break;
+                }
+                
+                // Decode the chunk
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+                
+                // Process complete lines
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                
+                for (const line of lines) {
+                    if (!line.trim()) continue; // Skip empty lines
                     
                     try {
-                        const parsed = JSON.parse(data);
-                        if (parsed.content) {
-                            fullArticle += parsed.content;
-                            articlePreview.innerHTML = fullArticle + 
-                                '<span class="typing-indicator">|</span>';
+                        // Check if this is an event line
+                        if (line.startsWith('data: ')) {
+                            const data = line.substring(6).trim();
                             
-                            // Auto-scroll to bottom
-                            articlePreview.scrollTop = articlePreview.scrollHeight;
+                            if (data === '[DONE]') {
+                                console.log('Received DONE signal');
+                                document.getElementById('publishBtn').disabled = false;
+                                showStatus('Artykuł wygenerowany pomyślnie!', 'success');
+                                continue;
+                            }
+                            
+                            // Try to parse the data as JSON
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed && parsed.content) {
+                                    fullArticle += parsed.content;
+                                    articlePreview.innerHTML = fullArticle + 
+                                        '<span class="typing-indicator">|</span>';
+                                    
+                                    // Try to extract custom prompt instructions if custom prompt is empty
+                                    if (!document.getElementById('customPrompt').value) {
+                                        // Simplified regex to find first paragraph
+                                        const firstParagraph = fullArticle.match(/<p[^>]*>(.*?)<\/p>/i);
+                                        if (firstParagraph && firstParagraph[1]) {
+                                            const promptText = firstParagraph[1].replace(/<[^>]*>/g, '').trim();
+                                            // Only set if we have meaningful content (more than 20 chars)
+                                            if (promptText.length > 20) {
+                                                document.getElementById('customPrompt').value = promptText;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Auto-scroll to bottom
+                                    articlePreview.scrollTop = articlePreview.scrollHeight;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing JSON:', e, 'Data:', data);
+                                // If it's not JSON, append as plain text
+                                fullArticle += data;
+                                articlePreview.innerHTML = fullArticle;
+                            }
                         }
                     } catch (e) {
-                        console.error('Error parsing JSON:', e);
+                        console.error('Error processing line:', e, 'Line:', line);
                     }
                 }
+            } catch (e) {
+                console.error('Error reading stream:', e);
+                showStatus(`Błąd podczas odczytu strumienia: ${e.message}`, 'error');
+                return;
             }
         }
     } catch (error) {
@@ -407,7 +457,75 @@ function openWordPressAdmin() {
     window.open(adminUrl, '_blank');
 }
 
-// Initialize the application when the DOM is fully loaded
+// Load the default prompt when the page loads
+async function loadDefaultPrompt() {
+    try {
+        showStatus('Ładowanie domyślnego promptu...', 'loading');
+        const response = await fetch(`${API_BASE_URL}/api/config/prompt`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const promptTextarea = document.getElementById('defaultPrompt');
+            if (promptTextarea) {
+                promptTextarea.value = data.prompt || '';
+                defaultPrompt = data.prompt || '';
+            }
+            showStatus('Domyślny prompt załadowany', 'success');
+        } else {
+            showStatus('Błąd podczas ładowania promptu', 'error');
+        }
+    } catch (error) {
+        console.error('Error loading prompt:', error);
+        showStatus('Błąd podczas ładowania promptu', 'error');
+    }
+}
+
+// Save the default prompt
+async function saveDefaultPrompt() {
+    const promptTextarea = document.getElementById('defaultPrompt');
+    if (!promptTextarea) return;
+    
+    const newPrompt = promptTextarea.value.trim();
+    if (!newPrompt) {
+        showStatus('Prompt nie może być pusty', 'error');
+        return;
+    }
+    
+    try {
+        showStatus('Zapisywanie promptu...', 'loading');
+        const saveBtn = document.getElementById('savePromptBtn');
+        const saveText = document.getElementById('savePromptText');
+        
+        if (saveBtn) saveBtn.disabled = true;
+        if (saveText) saveText.textContent = '💾 Zapisuję...';
+        
+        const response = await fetch(`${API_BASE_URL}/api/config/prompt`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ prompt: newPrompt })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            defaultPrompt = newPrompt;
+            showStatus('Prompt został zapisany pomyślnie!', 'success');
+        } else {
+            showStatus(`Błąd: ${data.error || 'Nie udało się zapisać promptu'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving prompt:', error);
+        showStatus('Błąd podczas zapisywania promptu', 'error');
+    } finally {
+        const saveBtn = document.getElementById('savePromptBtn');
+        const saveText = document.getElementById('savePromptText');
+        if (saveBtn) saveBtn.disabled = false;
+        if (saveText) saveText.textContent = '💾 Zapisz prompt';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Set up event listeners
     document.getElementById('goToWordPressBtn')?.addEventListener('click', openWordPressAdmin);
@@ -418,9 +536,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('generatePublishBtn')?.addEventListener('click', generateAndPublishArticle);
     document.getElementById('regenerateBtn')?.addEventListener('click', generateArticle);
     document.getElementById('publishBtn')?.addEventListener('click', publishArticle);
+    document.getElementById('savePromptBtn')?.addEventListener('click', saveDefaultPrompt);
     
-    // Alias for backward compatibility
-    window.generateArticleOnly = generateArticle;
+    // Load default prompt when the page loads
+    loadDefaultPrompt();
+    
+    // Make functions available globally for inline event handlers
+    window.generateArticle = generateArticle;
     window.testWordPressConnection = testWordPressConnection;
     window.testOllamaConnection = testOllamaConnection;
     window.scanGitProjects = scanGitProjects;

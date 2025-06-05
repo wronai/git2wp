@@ -46,6 +46,34 @@ body {
     padding: 2.5rem;
 }
 
+/* Code Editor */
+.code-editor {
+    width: 100%;
+    padding: 1rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 150px;
+    background-color: #f8f9fa;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.code-editor:focus {
+    outline: none;
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.help-text {
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
 /* Form Sections */
 .form-section {
     background: white;
@@ -236,13 +264,32 @@ textarea:focus {
 
 /* Status messages */
 .status {
-    padding: 12px 15px;
-    margin: 15px 0;
-    border-radius: 6px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    padding: 1rem;
+    margin: 0;
+    border-radius: 0;
     display: none;
-    font-size: 14px;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
     line-height: 1.5;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    animation: slideDown 0.3s ease-out;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 0.75rem 1rem;
+}
+
+.status-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 1rem;
 }
 
 .status--loading {
@@ -289,6 +336,28 @@ textarea:focus {
     content: '✕';
     font-size: 16px;
     font-weight: bold;
+}
+
+@keyframes slideDown {
+    from { 
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeOut {
+    from { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to { 
+        opacity: 0;
+        transform: translateY(-100%);
+    }
 }
 
 /* Loading dots animation */
