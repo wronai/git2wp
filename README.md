@@ -1,6 +1,18 @@
 # WordPress Git Publisher 🚀
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+
 Automatyczne generowanie i publikowanie artykułów na WordPress na podstawie aktywności Git z wykorzystaniem AI (Ollama).
+
+## 📦 Nowości w wersji 1.1.0
+
+- Dodano wsparcie dla zmiennych środowiskowych z pliku `.env`
+- Nowe skrypty `start.sh` i `stop.sh` do łatwego zarządzania usługami
+- Zaktualizowany Makefile z lepszym wsparciem dla środowiska deweloperskiego
+- Ulepszona obsługa błędów i logowanie
+- Automatyczne wykrywanie konfiguracji z pliku `.env`
 
 ## ✨ Funkcje
 
@@ -10,6 +22,46 @@ Automatyczne generowanie i publikowanie artykułów na WordPress na podstawie ak
 - 🎯 **Analiza commitów** - Szczegółowa analiza zmian w kodzie z danego dnia
 - 📊 **Podgląd treści** - Możliwość przejrzenia artykułu przed publikacją
 - 🔐 **Bezpieczna autoryzacja** - Wsparcie dla Application Passwords WordPress
+
+## ⚙️ Konfiguracja
+
+### Plik .env
+
+Skopiuj plik `.env.example` do `.env` i zaktualizuj wartości:
+
+```bash
+cp .env.example .env
+nano .env  # lub inny edytor tekstu
+```
+
+### Wymagane zmienne środowiskowe
+
+```env
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# Frontend Configuration
+FRONTEND_PORT=8088
+API_URL=http://localhost:3001
+
+# WordPress Configuration
+WORDPRESS_URL=https://twoja-strona.com
+WORDPRESS_USERNAME=twoj_uzytkownik
+WORDPRESS_PASSWORD=twoje_haslo_lub_application_password
+
+# Ollama Configuration
+OLLAMA_BASE_URL=http://localhost:11437
+DEFAULT_MODEL=mistral:7b
+
+# Git Configuration
+GIT_SCAN_DEPTH=3
+GIT_PATH=/sciezka/do/twoich/repozytoriow
+
+# Logging
+LOG_LEVEL=debug
+LOG_FILE=logs/app.log
+```
 
 ## 🛠️ Wymagania
 
@@ -23,6 +75,7 @@ Automatyczne generowanie i publikowanie artykułów na WordPress na podstawie ak
 - **WordPress** z włączonym REST API
 - **Application Password** skonfigurowane w WordPress
 
+![Konfiguracja i generowanie artykułu](image.png)
 ## 📦 Instalacja
 
 ### 1. Klonowanie repozytorium
@@ -163,6 +216,41 @@ Aplikacja analizuje następujące informacje z commitów:
 - **Lokalne przetwarzanie** - dane Git nie opuszczają Twojego serwera
 - **HTTPS zalecane** dla produkcji
 - **Walidacja danych** na wszystkich endpointach API
+
+## 🚀 Uruchamianie aplikacji
+
+### Rozpoczęcie pracy
+
+```bash
+# Instalacja zależności
+make install
+
+# Uruchomienie serwerów (backend i frontend)
+make start
+
+# W przeglądarce otwórz:
+# - Frontend: http://localhost:8088
+# - Backend API: http://localhost:3001
+```
+
+### Inne przydatne komendy
+
+```bash
+# Zatrzymanie wszystkich usług
+make stop
+
+# Restart usług
+make restart
+
+# Tryb developerski z automatycznym przeładowaniem
+make dev
+
+# Czyszczenie plików tymczasowych
+make clean
+
+# Pełne czyszczenie (włącznie z node_modules)
+make distclean
+```
 
 ## 🔧 Rozwiązywanie problemów
 
