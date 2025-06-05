@@ -4,24 +4,208 @@
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)](https://nodejs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-Automatyczne generowanie i publikowanie artykułów na WordPress na podstawie aktywności Git z wykorzystaniem AI (Ollama).
+Automatically generate and publish WordPress articles based on Git activity using AI (Ollama).
 
-## 📦 Nowości w wersji 1.1.0
+> **Note:** This README is also available in [Polish](#polski) below.
 
-- Dodano wsparcie dla zmiennych środowiskowych z pliku `.env`
-- Nowe skrypty `start.sh` i `stop.sh` do łatwego zarządzania usługami
-- Zaktualizowany Makefile z lepszym wsparciem dla środowiska deweloperskiego
-- Ulepszona obsługa błędów i logowanie
-- Automatyczne wykrywanie konfiguracji z pliku `.env`
+## Table of Contents
+- [✨ Features](#-features)
+- [🚀 Quick Start](#-quick-start)
+- [⚙️ Configuration](#%EF%B8%8F-configuration)
+- [🛠️ Requirements](#%EF%B8%8F-requirements)
+- [📦 Installation](#-installation)
+- [🔧 Usage](#-usage)
+- [📁 Project Structure](#-project-structure)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
-## ✨ Funkcje
+## ✨ Features
 
-- 📁 **Skanowanie repozytoriów Git** - Automatyczne wykrywanie projektów w strukturze `github/*/*`
-- 🤖 **Generowanie artykułów AI** - Wykorzystanie Ollama z modelami Mistral 7B, Llama2, CodeLlama
-- 📝 **Publikacja na WordPress** - Bezpośrednie publikowanie przez WordPress REST API
-- 🎯 **Analiza commitów** - Szczegółowa analiza zmian w kodzie z danego dnia
-- 📊 **Podgląd treści** - Możliwość przejrzenia artykułu przed publikacją
-- 🔐 **Bezpieczna autoryzacja** - Wsparcie dla Application Passwords WordPress
+- 📁 **Git Repository Scanning** - Automatically detect projects in `github/*/*` structure
+- 🤖 **AI Article Generation** - Utilizes Ollama with support for Mistral 7B, Llama2, CodeLlama
+- 📝 **WordPress Publishing** - Direct publishing via WordPress REST API
+- 🎯 **Commit Analysis** - Detailed analysis of code changes for the selected day
+- 📊 **Content Preview** - Preview articles before publishing
+- 🔐 **Secure Authorization** - WordPress Application Passwords support
+- 🚀 **Easy Setup** - Simple configuration via `.env` file
+- 🔄 **Auto-Reload** - Development mode with automatic server restart
+
+## 🚀 Quick Start
+
+### Using Docker (Recommended)
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-username/wordpress-git-publisher.git
+   cd wordpress-git-publisher
+   ```
+
+2. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your WordPress credentials and other settings
+   ```
+
+3. **Start with Docker Compose**
+   ```bash
+   docker compose up -d
+   ```
+
+4. **Access the web interface**
+   ```
+   http://localhost:9000
+   ```
+
+### Manual Installation
+
+1. **Clone and install dependencies**
+   ```bash
+   git clone https://github.com/your-username/wordpress-git-publisher.git
+   cd wordpress-git-publisher
+   make install
+   ```
+
+2. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. **Start the application**
+   ```bash
+   make start
+   ```
+
+## 📦 What's New in v1.1.0
+
+- Added support for environment variables via `.env` file
+- New `start.sh` and `stop.sh` scripts for easier service management
+- Updated Makefile with better development environment support
+- Improved error handling and logging
+- Automatic configuration detection from `.env` file
+
+## 🔧 Usage
+
+### Starting Services
+
+1. **Using Docker Compose (Recommended)**
+   ```bash
+   # Start all services
+   docker compose up -d
+
+   # View logs
+   docker compose logs -f
+
+   # Stop services
+   docker compose down
+   ```
+
+2. **Using Make (Manual Installation)**
+   ```bash
+   # Start all services
+   make start
+
+   # Start frontend only
+   make frontend
+
+   # Start backend only
+   make backend
+   ```
+
+### Publishing Articles
+
+1. **Configure WordPress Settings**
+   - Open `http://localhost:9000/settings.html`
+   - Enter your WordPress URL, username, and application password
+   - Configure Ollama settings (default URL: http://localhost:11434)
+   - Save the configuration
+
+2. **Scan Git Repositories**
+   - Open `http://localhost:9000`
+   - The app will scan for Git repositories in the `github/*/*` structure
+   - Select a repository from the dropdown
+
+3. **Generate and Publish Articles**
+   - Choose a date to analyze Git activity
+   - Click "Generate" to create an article using AI
+   - Preview and edit the content if needed
+   - Click "Publish" to post to WordPress
+
+4. **Monitor Status**
+   - Check frontend health at `http://localhost:9000/health`
+   - Check backend health at `http://localhost:3001/api/health`
+   - View logs in the `logs` directory
+   - Review and click "Publish" to post to WordPress
+
+2. **Via Command Line**
+   ```bash
+   # Replace YYYY-MM-DD with your target date
+   make publish date=YYYY-MM-DD
+   ```
+   Example:
+   ```bash
+   make publish date=2025-06-05
+   ```
+
+### Monitoring
+
+- **Frontend Logs**: Available at `logs/frontend.log`
+- **Backend Logs**: Available at `logs/backend.log`
+- **Health Checks**:
+  - Frontend: `http://localhost:9000/health`
+  - Backend: `http://localhost:3001/api/health`
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and update the values:
+
+```bash
+cp .env.example .env
+nano .env  # or use your preferred text editor
+```
+
+### Required Environment Variables
+
+```env
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# Frontend Configuration
+FRONTEND_PORT=8088
+API_URL=http://localhost:3001
+
+# WordPress Configuration
+WORDPRESS_URL=https://your-wordpress-site.com
+WORDPRESS_USERNAME=your_username
+WORDPRESS_PASSWORD=your_application_password
+
+# Ollama Configuration
+OLLAMA_BASE_URL=http://localhost:11434
+DEFAULT_MODEL=mistral:7b
+
+# Git Configuration
+GIT_SCAN_DEPTH=3
+GIT_PATH=/path/to/your/repositories
+
+# Logging
+LOG_LEVEL=debug
+LOG_FILE=logs/app.log
+```
+
+## 🛠️ Requirements
+
+### Software
+- **Node.js** >= 16.0.0
+- **npm** >= 8.0.0
+- **Git** installed and configured
+- **Ollama** with a supported AI model
+
+### Services
+- **WordPress** with REST API enabled
+- **Application Password** configured in WordPress
 
 ## ⚙️ Konfiguracja
 
@@ -76,57 +260,105 @@ LOG_FILE=logs/app.log
 - **Application Password** skonfigurowane w WordPress
 
 ![Konfiguracja i generowanie artykułu](image.png)
-## 📦 Instalacja
+## 📦 Installation
 
-### 1. Klonowanie repozytorium
+### 1. Clone the repository
 ```bash
 git clone https://github.com/your-username/wordpress-git-publisher.git
 cd wordpress-git-publisher
 ```
 
-### 2. Instalacja zależności
+### 2. Install dependencies
 ```bash
+make install
+# or
 npm install
 ```
 
-### 3. Konfiguracja Ollama
+### 3. Configure Ollama
+
+#### Install Ollama
 ```bash
-# Instalacja Ollama (Linux/macOS)
+# Linux/macOS
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Lub pobranie z https://ollama.ai/download dla Windows
+# Or download from https://ollama.ai/download for Windows
 
-# Uruchomienie Ollama
+# Start Ollama
 ollama serve
 
-# Pobranie modelu (w osobnym terminalu)
+# Download a model (in a separate terminal)
 ollama pull mistral:7b
 ```
 
-### 4. Konfiguracja WordPress
+### 4. WordPress Configuration
 
-#### Generowanie Application Password:
-1. Zaloguj się do WordPress Admin
-2. Idź do **Użytkownicy → Twój profil**
-3. Przewiń do sekcji **"Application Passwords"**
-4. Wpisz nazwę aplikacji (np. "Git Publisher")
-5. Kliknij **"Add New Application Password"**
-6. **Skopiuj wygenerowane hasło** (pokazuje się tylko raz!)
+#### Generate Application Password:
+1. Log in to WordPress Admin
+2. Go to **Users → Your Profile**
+3. Scroll down to the **Application Passwords** section
+4. Enter a name for your application (e.g., "Git Publisher")
+5. Click **Add New Application Password**
+6. **Copy the generated password** (it will only be shown once!)
 
-## 🚀 Uruchomienie
+## 🔧 Usage
 
-### 1. Uruchomienie backend serwera
+### Available Commands
+
 ```bash
-npm start
-# lub dla developmentu z auto-restartowaniem:
-npm run dev
+# Install dependencies
+make install
+
+# Start the application
+make start
+
+# Stop the application
+make stop
+
+# Restart the application
+make restart
+
+# Start in development mode with auto-reload
+make dev
+
+# Clean up temporary files
+make clean
+
+# Remove node_modules and logs
+make distclean
+
+# Show help
+make help
 ```
 
-### 2. Otwarcie aplikacji webowej
-Otwórz przeglądarkę i idź na:
-```
-http://localhost:3001
-```
+### Web Interface
+
+1. **WordPress Configuration**
+   - **WordPress URL**: `https://your-wordpress-site.com`
+   - **Username**: Your WordPress username
+   - **Application Password**: The password generated in the WordPress settings
+   - Click **"Test Connection"**
+
+2. **Ollama Configuration**
+   - **Ollama URL**: `http://localhost:11434` (default)
+   - **Model**: Select an available model (e.g., `mistral:7b`)
+   - Click **"Test Ollama"**
+
+3. **Git Configuration**
+   - **GitHub Folders Path**: `/path/to/your/github/repos` or `C:\Users\username\github`
+   - **Analysis Date**: Select a date (defaults to today)
+   - Click **"Scan Git Projects"**
+
+4. **Generate Article**
+   - Optionally provide a custom title
+   - **Category**: WordPress category name
+   - **Tags**: Comma-separated tags
+   - Click **"Generate and Publish Article"**
+
+5. **Publish**
+   - Review the generated article in the preview section
+   - Click **"Publish to WordPress"**
+   - You'll receive a link to the published article
 
 ## 📋 Instrukcja użytkowania
 
@@ -157,47 +389,156 @@ http://localhost:3001
 - Kliknij **"Publikuj na WordPress"**
 - Otrzymasz link do opublikowanego artykułu
 
-## 📁 Struktura projektu
+## 📁 Project Structure
 
 ```
 wordpress-git-publisher/
 ├── server.js              # Backend Express.js
-├── package.json           # Zależności Node.js
-├── public/
-│   └── index.html         # Frontend aplikacji
-├── README.md             # Ta dokumentacja
-└── .gitignore           # Pliki ignorowane przez Git
+├── package.json           # Node.js dependencies
+├── package-lock.json      # Lock file for dependencies
+├── public/                # Frontend assets
+│   ├── css/
+│   │   └── styles.css    # Frontend styles
+│   ├── js/
+│   │   └── app.js       # Frontend JavaScript
+│   └── index.html         # Frontend application
+├── logs/                  # Application logs
+├── .env.example          # Example environment variables
+├── .gitignore            # Git ignore rules
+├── Makefile              # Development tasks
+├── start.sh              # Startup script
+├── stop.sh               # Shutdown script
+└── README.md             # This documentation
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+# Polski
+
+## ✨ Funkcje
+
+- 📁 **Skanowanie repozytoriów Git** - Automatyczne wykrywanie projektów w strukturze `github/*/*`
+- 🤖 **Generowanie artykułów AI** - Wykorzystanie Ollama z modelami Mistral 7B, Llama2, CodeLlama
+- 📝 **Publikacja na WordPress** - Bezpośrednie publikowanie przez WordPress REST API
+- 🎯 **Analiza commitów** - Szczegółowa analiza zmian w kodzie z danego dnia
+- 📊 **Podgląd treści** - Możliwość przejrzenia artykułu przed publikacją
+- 🔐 **Bezpieczna autoryzacja** - Wsparcie dla Application Passwords WordPress
+- 🚀 **Łatwa konfiguracja** - Prosta konfiguracja przez plik `.env`
+- 🔄 **Automatyczne przeładowanie** - Tryb developerski z automatycznym restartem serwera
+
+## 🚀 Szybki start
+
+1. **Sklonuj repozytorium**
+   ```bash
+   git clone https://github.com/your-username/wordpress-git-publisher.git
+   cd wordpress-git-publisher
+   ```
+
+2. **Zainstaluj zależności**
+   ```bash
+   make install
+   ```
+
+3. **Skonfiguruj środowisko**
+   ```bash
+   cp .env.example .env
+   # Edytuj plik .env zgodnie z konfiguracją
+   ```
+
+4. **Uruchom aplikację**
+   ```bash
+   make start
+   ```
+
+5. **Otwórz interfejs w przeglądarce**
+   ```
+   http://localhost:3001
+   ```
+
+## 🔧 Użycie
+
+### Dostępne komendy
+
+```bash
+# Instalacja zależności
+make install
+
+# Uruchomienie aplikacji
+make start
+
+# Zatrzymanie aplikacji
+make stop
+
+# Restart aplikacji
+make restart
+
+# Uruchomienie w trybie developerskim z automatycznym przeładowywaniem
+make dev
+
+# Czyszczenie plików tymczasowych
+make clean
+
+# Usunięcie node_modules i logów
+make distclean
+
+# Wyświetlenie pomocy
+make help
+```
+
+## 📄 Licencja
+
+Ten projekt jest dostępny na licencji MIT - szczegóły w pliku [LICENSE](LICENSE).
 
 ## 🔧 API Endpoints
 
-| Endpoint | Metoda | Opis |
-|----------|--------|------|
-| `/api/health` | GET | Sprawdzenie stanu serwera |
-| `/api/test-wordpress` | POST | Test połączenia z WordPress |
-| `/api/test-ollama` | POST | Test połączenia z Ollama |
-| `/api/scan-git` | POST | Skanowanie repozytoriów Git |
-| `/api/generate-article` | POST | Generowanie artykułu AI |
-| `/api/publish-wordpress` | POST | Publikacja na WordPress |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Check server status |
+| `/api/test-wordpress` | POST | Test WordPress connection |
+| `/api/test-ollama` | POST | Test Ollama connection |
+| `/api/scan-git` | POST | Scan Git repositories |
+| `/api/generate-article` | POST | Generate AI article |
+| `/api/publish-wordpress` | POST | Publish to WordPress |
 
-## 📊 Format danych Git
+## 📊 Git Data Format
 
-Aplikacja analizuje następujące informacje z commitów:
-- **Hash commita** (skrócony i pełny)
-- **Wiadomość commita**
-- **Autor i email**
-- **Data commita**
-- **Lista zmienionych plików**
-- **Statystyki zmian** (+/- linii)
-- **Aktualna gałąź**
-- **URL zdalnego repozytorium**
+The application analyzes the following commit information:
+- **Commit hash** (short and full)
+- **Commit message**
+- **Author and email**
+- **Commit date**
+- **List of changed files**
+- **Change statistics** (+/- lines)
+- **Current branch**
+- **Remote repository URL**
 
-## 🎨 Przykład wygenerowanego artykułu
+## 🎨 Example Generated Article
 
 ```html
-<h1>Postępy w projektach - 2025-06-04</h1>
+<h1>Project Updates - 2025-06-04</h1>
 
-<p>Dzisiaj był produktywny dzień w moich projektach programistycznych...</p>
+<p>Today was a productive day in my development projects...</p>
+```
+
+---
+
+<div align="center">
+  Made with ❤️ by Your Name | [Contribute](CONTRIBUTING.md)
+</div>
 
 <h2>Projekt: wordpress-publisher</h2>
 <p>W projekcie wordpress-publisher zrealizowałem następujące zadania:</p>

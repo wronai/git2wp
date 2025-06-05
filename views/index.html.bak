@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Narzędzie do automatycznego generowania i publikowania artykułów na WordPress na podstawie aktywności w repozytorium Git">
+    <meta name="keywords" content="wordpress, git, publisher, generator, artykułów, automatyzacja">
+    <meta name="author" content="WordPress Git Publisher">
+    <title>WordPress Git Publisher - Automatyczne generowanie artykułów z Git</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+    
+    <script type="text/javascript">
+      // Configuration from server-side
+      window.APP_CONFIG = {
+        API_URL: '<%= API_URL || "http://localhost:3001" %>',
+        OLLAMA_URL: '<%= OLLAMA_BASE_URL || "http://localhost:11434" %>',
+        OLLAMA_MODEL: '<%= DEFAULT_MODEL || "llama2" %>',
+        WORDPRESS_URL: '<%= WORDPRESS_URL || "" %>',
+        WORDPRESS_USERNAME: '<%= WORDPRESS_USERNAME || "" %>',
+        WORDPRESS_TOKEN: '<%= WORDPRESS_TOKEN ? "***" : "" %>',
+        NODE_ENV: '<%= NODE_ENV || "development" %>'
+      };
+      
+      // Debug output
+      console.log('Application configuration loaded:', window.APP_CONFIG);
+    </script>
+    <script>
+      // This script runs after EJS processing
+      (function() {
+        try {
+          // Ensure APP_CONFIG exists
+          if (!window.APP_CONFIG) {
+            console.error('APP_CONFIG is not defined');
+            window.APP_CONFIG = {
+              API_URL: 'http://localhost:3001',
+              OLLAMA_URL: 'http://localhost:11434',
+              OLLAMA_MODEL: 'llama2',
+              WORDPRESS_URL: '',
+              WORDPRESS_USERNAME: '',
+              WORDPRESS_TOKEN: '',
+              NODE_ENV: 'development'
+            };
+          }
+          
+          // Sanitize the configuration
+          const config = {
+            ...window.APP_CONFIG,
+            WORDPRESS_TOKEN: window.APP_CONFIG.WORDPRESS_TOKEN ? '***' : 'not set',
+            WORDPRESS_URL: window.APP_CONFIG.WORDPRESS_URL || 'not set',
+            WORDPRESS_USERNAME: window.APP_CONFIG.WORDPRESS_USERNAME || 'not set'
+          };
+          
+          // Ensure API_URL is always set and doesn't contain EJS tags
+          if (typeof config.API_URL === 'string' && config.API_URL.includes('<%')) {
+            config.API_URL = 'http://localhost:3001';
+          }
+          
+          // Update the configuration in window.APP_CONFIG
+          window.APP_CONFIG = config;
+          
+          // Log the configuration (without sensitive data)
+          console.log('App config sanitized:', window.APP_CONFIG);
+          
+        } catch (error) {
+          console.error('Error initializing APP_CONFIG:', error);
+          // Set default config if there's an error
+          window.APP_CONFIG = window.APP_CONFIG || {};
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="css/styles.css" as="style" onload="this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
+</head>
+<body>
+    <!-- Status Message Container -->
+    <div id="statusMessage" class="status"></div>
+    
+    <div class="container">
+        <header class="header">
+            <h1 class="header__title">🚀 WordPress Git Publisher</h1>
+            <p class="header__subtitle">Automatyczne generowanie artykułów na podstawie aktywności Git z wykorzystaniem AI</p>
+        </header>
+
+        <div class="main-content">
+            <!-- WordPress Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">🔗</span> Konfiguracja WordPress</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="wordpressUrl">URL WordPress</label>
+                        <div class="input-with-button">
+                            <input type="url" id="wordpressUrl" 
+                                   placeholder="https://example.com" 
+                                   data-default="<%= WORDPRESS_URL || '' %>"
+                                   required>
+                            <button type="button" id="goToWordPressBtn" class="btn-icon" title="Przejdź do panelu WordPress">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="wordpressUsername">Nazwa użytkownika</label>
+                        <input type="text" id="wordpressUsername" 
+                               placeholder="admin" 
+                               data-default="<%= WORDPRESS_USERNAME || '' %>"
+                               required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="wordpressPassword">Application Password</label>
+                    <div class="input-with-button">
+                        <input type="password" 
+                               id="wordpressPassword" 
+                               placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" 
+                               data-default="<%= WORDPRESS_TOKEN || '' %>"
+                               required>
+                        <button type="button" id="togglePassword" class="btn-icon" title="Pokaż/ukryj hasło">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <button class="btn" id="testWordPressBtn">
+                    <span id="testWpText">🔍 Testuj połączenie</span>
+                </button>
+            </div>
+
+            <!-- Ollama Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">🤖</span> Konfiguracja Ollama</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ollamaUrl">URL Ollama</label>
+                        <input type="url" id="ollamaUrl" value="http://localhost:11434" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ollamaModel">Model</label>
+                        <div class="input-with-button">
+                            <select id="ollamaModel" class="model-select" disabled>
+                                <option value="">Ładowanie modeli...</option>
+                            </select>
+                            <button type="button" id="refreshModelsBtn" class="btn-icon" title="Odśwież listę modeli">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <path d="M3 3v5h5"></path>
+                                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                                    <path d="M16 16h5v5"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="help-text" id="modelStatus">Pobieranie dostępnych modeli...</p>
+                    </div>
+                </div>
+                <button class="btn" id="testOllamaBtn">
+                    <span id="testOllamaText">🔍 Testuj Ollama</span>
+                </button>
+            </div>
+
+            <!-- Prompt Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">✏️</span> Konfiguracja Promptu</h2>
+                <div class="form-group">
+                    <label for="defaultPrompt">Domyślny prompt dla AI</label>
+                    <textarea id="defaultPrompt" rows="6" class="code-editor" placeholder="Wprowadź domyślny prompt..."></textarea>
+                    <p class="help-text">Ten prompt będzie używany jako podstawa do generowania artykułów. Możesz go dostosować przed każdym generowaniem.</p>
+                </div>
+                <button class="btn" id="savePromptBtn">
+                    <span id="savePromptText">💾 Zapisz prompt</span>
+                </button>
+            </div>
+
+            <!-- Git Configuration -->
+            <div class="form-section">
+                <h2><span class="icon">📁</span> Konfiguracja Git</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="githubPath">Ścieżka do folderów GitHub</label>
+                        <input type="text" id="githubPath" placeholder="/home/user/github" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="selectedDate">Data analizy</label>
+                        <input type="date" id="selectedDate" required>
+                    </div>
+                </div>
+                <button class="btn" id="scanGitBtn">
+                    <span id="scanGitText">📊 Skanuj projekty Git</span>
+                </button>
+            </div>
+
+            <!-- Git Projects Display -->
+            <div id="gitProjectsSection" style="display: none;">
+                <div class="form-section">
+                    <h2><span class="icon">📈</span> Znalezione projekty i commity</h2>
+                    <div id="gitProjects" class="git-projects"></div>
+                </div>
+            </div>
+
+            <!-- Article Generation -->
+            <div class="form-section">
+                <h2><span class="icon">✏️</span> Generowanie artykułu</h2>
+                <div class="form-group">
+                    <label for="articleTitle">Tytuł artykułu (opcjonalny)</label>
+                    <input type="text" id="articleTitle" placeholder="Zostanie wygenerowany automatycznie">
+                </div>
+                <div class="form-group">
+                    <label for="customPrompt">Dodatkowe instrukcje dla AI (opcjonalne)</label>
+                    <textarea id="customPrompt" rows="3" placeholder="Np. 'Napisz artykuł techniczny', 'Stwórz podsumowanie zmian', itp."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="articleCategory">Kategoria</label>
+                        <input type="text" id="articleCategory" placeholder="Development, Updates, itp.">
+                    </div>
+                    <div class="form-group">
+                        <label for="articleTags">Tagi (oddzielone przecinkami)</label>
+                        <input type="text" id="articleTags" placeholder="git, development, progress">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <button class="btn" id="generateBtn" data-action="generate-article">
+                            <span id="generateText">🤖 Generuj artykuł</span>
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-success" id="generatePublishBtn" data-action="generate-and-publish" style="display: none;">
+                            <span id="generatePublishText">🎯 Generuj i publikuj od razu</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview Section -->
+            <div id="previewSection" style="display: none;">
+                <div class="form-section">
+                    <h2><span class="icon">👁️</span> Podgląd wygenerowanego artykułu</h2>
+                    <div id="articlePreview" class="preview-content"></div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <button class="btn" id="regenerateBtn" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
+                                🔄 Regeneruj artykuł
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-success" id="publishBtn">
+                                🚀 Publikuj na WordPress
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Messages -->
+            <div id="statusMessages"></div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="js/app.js" defer></script>
+    <script>
+        // Set default date when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                const today = new Date();
+                const dateInput = document.getElementById('selectedDate');
+                if (dateInput) {
+                    const dateString = today.toISOString().split('T')[0];
+                    dateInput.value = dateString;
+                }
+            } catch (error) {
+                console.error('Error setting default date:', error);
+            }
+        });
+    </script>
+</body>
+</html>

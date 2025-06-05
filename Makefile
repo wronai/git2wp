@@ -1,4 +1,4 @@
-.PHONY: install start stop restart dev clean help
+.PHONY: install start stop restart frontend backend publish dev clean distclean help
 
 # Load environment variables if .env exists
 ifneq (,$(wildcard ./.env))
@@ -7,32 +7,26 @@ ifneq (,$(wildcard ./.env))
 endif
 
 # Default target when you just run 'make'
-help:
+help: ## Show this help message
 	@echo "\033[1mWordPress Git Publisher\033[0m"
 	@echo ""
 	@echo "\033[1mAvailable commands:\033[0m"
-	@echo "  make install    - Install dependencies"
-	@echo "  make start      - Start backend and frontend servers"
-	@echo "  make stop       - Stop all services"
-	@echo "  make restart    - Restart all services"
-	@echo "  make dev        - Start in development mode with auto-reload"
-	@echo "  make clean      - Clean up temporary files and logs"
-	@echo "  make distclean  - Remove node_modules and logs"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
-	@echo "\033[1mConfiguration (in .env):\033[0m"
-	@echo "  PORT: $(PORT)"
-	@echo "  FRONTEND_PORT: $(FRONTEND_PORT)"
-	@echo "  OLLAMA_BASE_URL: $(OLLAMA_BASE_URL)"
-	@echo "  WORDPRESS_URL: $(WORDPRESS_URL)"
+	@echo "\033[1mConfiguration (from .env):\033[0m"
+	@echo "  PORT: $(or $(PORT), not set)"
+	@echo "  FRONTEND_PORT: $(or $(FRONTEND_PORT), not set)"
+	@echo "  OLLAMA_BASE_URL: $(or $(OLLAMA_BASE_URL), not set)"
+	@echo "  WORDPRESS_URL: $(or $(WORDPRESS_URL), not set)"
 
 # Install dependencies
-install:
+install: ## Install project dependencies
 	@echo "Installing dependencies..."
 	npm install
 
-# Start the application
-start:
-	@echo "Starting services..."
+# Start all services
+start: ## Start all services (backend and frontend)
+	@echo "Starting all services..."
 	@if [ -f .env ]; then \
 		echo "Using environment variables from .env"; \
 	else \
@@ -46,8 +40,30 @@ start:
 		exit 1; \
 	fi
 
+# Start frontend only
+frontend: ## Start frontend server only
+	@echo "Starting frontend server..."
+	@cd public && python3 simple_server.py --port $(or $(FRONTEND_PORT),9000) --log-file $(PWD)/logs/frontend.log
+
+# Start backend only
+backend: ## Start backend server only
+	@echo "Starting backend server..."
+	@node server.js
+
+# Publish article
+publish: ## Publish article to WordPress
+	@if [ -z "$(date)" ]; then \
+		echo "\033[31mError: date parameter is required. Usage: make publish date=YYYY-MM-DD\033[0m"; \
+		exit 1; \
+	fi
+	@echo "Publishing article for date: $(date)..."
+	@curl -X POST "http://localhost:$(or $(PORT),3001)/api/publish" \
+		-H "Content-Type: application/json" \
+		-d '{"date": "$(date)"}'
+
+
 # Stop the application
-stop:
+stop: ## Stop all running services
 	@echo "Stopping services..."
 	@if [ -f stop.sh ]; then \
 		chmod +x stop.sh; \
@@ -65,34 +81,22 @@ stop:
 	fi
 
 # Restart the application
-restart: stop start
+restart: stop start ## Restart all services
 
 # Start in development mode with auto-reload
-dev:
+dev: ## Start in development mode with auto-reload
 	@echo "Starting in development mode..."
 	npx nodemon server.js
 
 # Clean up temporary files and logs
-clean:
+clean: ## Clean up temporary files and logs
 	@echo "Cleaning up temporary files and logs..."
 	@find . -name '*.log' -delete
 	@find . -name '*.pid' -delete
 	@rm -f logs/*.log 2>/dev/null || true
 
 # Deep clean - remove node_modules and logs
-distclean: clean
+distclean: clean ## Remove node_modules and logs
 	@echo "Removing node_modules and logs..."
 	@rm -rf node_modules
 	@rm -rf logs
-
-# Include environment variables if .env exists
-ifneq (,$(wildcard ./.env))
-    include .env
-    export
-endif
-
-# Include environment variables if .env exists
-ifneq (,$(wildcard ./.env))
-    include .env
-    export
-endif

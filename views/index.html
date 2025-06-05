@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordPress Git Publisher</title>
+    <script>
+        // Configuration from server-side
+        window.APP_CONFIG = {
+            API_URL: '<%= it.API_URL || "http://localhost:3001" %>',
+            OLLAMA_URL: '<%= it.OLLAMA_BASE_URL || "http://localhost:11434" %>',
+            OLLAMA_MODEL: '<%= it.DEFAULT_MODEL || "llama2" %>',
+            WORDPRESS_URL: '<%= it.WORDPRESS_URL || "" %>',
+            WORDPRESS_USERNAME: '<%= it.WORDPRESS_USERNAME || "" %>',
+            WORDPRESS_TOKEN: '<%= it.WORDPRESS_TOKEN ? "***" : "" %>',
+            NODE_ENV: '<%= it.NODE_ENV || "development" %>'
+        };
+        console.log('Application config:', window.APP_CONFIG);
+    </script>
+</head>
+<body>
+    <h1>WordPress Git Publisher</h1>
+    <p>Application is loading...</p>
+    <pre><%= JSON.stringify(it, null, 2) %></pre>
+</body>
+</html>

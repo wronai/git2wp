@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  git2wp:
+    build: .
+    ports:
+      - "9000:9000"  # Frontend
+      - "3001:3001"  # Backend API
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - FRONTEND_PORT=9000
+      - WORDPRESS_URL=${WORDPRESS_URL}
+      - WORDPRESS_USERNAME=${WORDPRESS_USERNAME}
+      - WORDPRESS_TOKEN=${WORDPRESS_TOKEN}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./logs:/app/logs
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:

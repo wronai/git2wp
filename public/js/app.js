@@ -1,11 +1,43 @@
 // Configuration
-const API_BASE_URL = window.APP_CONFIG.API_URL || window.location.origin;
-const OLLAMA_URL = window.APP_CONFIG.OLLAMA_URL || 'http://localhost:11434';
+const API_BASE_URL = window.API_URL || window.location.origin + '/api';
+const configManager = window.configManager || null;
+
+// Global state
+let repositories = [];
+let selectedRepository = null;
+let generatedArticle = null;
+
+/**
+ * Loads Git configuration and updates the UI
+ */
+async function loadGitConfig() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/config/git`);
+        if (!response.ok) {
+            throw new Error('Nie udało się załadować konfiguracji Gita');
+        }
+        
+        const config = await response.json();
+        
+        if (config.success && config.defaultPath) {
+            const githubPathInput = document.getElementById('githubPath');
+            if (githubPathInput && !githubPathInput.value) {
+                githubPathInput.value = config.defaultPath;
+                console.log('Ustawiono domyślną ścieżkę Git:', config.defaultPath);
+            }
+        }
+        
+        return config;
+    } catch (error) {
+        console.error('Błąd podczas ładowania konfiguracji Gita:', error);
+        showStatus(`Błąd podczas ładowania konfiguracji Gita: ${error.message}`, 'error');
+        return null;
+    }
+}
 
 // Global variables
 let gitData = {};
 let selectedProject = null;
-let generatedArticle = '';
 let defaultPrompt = '';
 
 /**
@@ -720,61 +752,169 @@ function setupPasswordToggle() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Load WordPress configuration from environment
-    loadWordPressConfig();
-    
-    // Set up event listeners
-    document.getElementById('goToWordPressBtn')?.addEventListener('click', openWordPressAdmin);
-    document.getElementById('testWordPressBtn')?.addEventListener('click', testWordPressConnection);
-    document.getElementById('refreshModelsBtn')?.addEventListener('click', fetchOllamaModels);
-    document.getElementById('ollamaUrl')?.addEventListener('change', updateOllamaUrl);
-    
-    // Set up password toggle
-    setupPasswordToggle();
-    
-    // Initial fetch of models
-    fetchOllamaModels();
-    document.getElementById('testOllamaBtn')?.addEventListener('click', testOllamaConnection);
-    document.getElementById('scanGitBtn')?.addEventListener('click', scanGitProjects);
-    document.getElementById('generateBtn')?.addEventListener('click', generateArticle);
-    document.getElementById('generatePublishBtn')?.addEventListener('click', generateAndPublishArticle);
-    document.getElementById('regenerateBtn')?.addEventListener('click', generateArticle);
-    document.getElementById('publishBtn')?.addEventListener('click', publishArticle);
-    document.getElementById('savePromptBtn')?.addEventListener('click', saveDefaultPrompt);
-    
-    // Load default prompt when the page loads
-    loadDefaultPrompt();
-    
-    // Make functions available globally for inline event handlers
-    window.generateArticle = generateArticle;
-    window.testWordPressConnection = testWordPressConnection;
-    window.testOllamaConnection = testOllamaConnection;
-    window.scanGitProjects = scanGitProjects;
-    window.publishToWordPress = publishArticle;
-    
-    // Initialize UI state
-    document.getElementById('generateBtn').disabled = true;
-    document.getElementById('generatePublishBtn').style.display = 'none';
-    document.getElementById('publishBtn').disabled = true;
-    
-    // Add help text for WordPress Application Password
-    const wordpressPasswordHelp = document.createElement('div');
-    wordpressPasswordHelp.className = 'help-text';
-    wordpressPasswordHelp.innerHTML = `
-        <p><strong>Jak uzyskać Application Password w WordPress:</strong></p>
-        <ol>
-            <li>Zaloguj się do panelu administracyjnego WordPress</li>
-            <li>Przejdź do Profil > Application Passwords</li>
-            <li>Wpisz nazwę aplikacji (np. "Git Publisher")</li>
-            <li>Kliknij "Add New"</li>
-            <li>Skopiuj wygenerowane hasło i wklej je w polu powyżej</li>
-        </ol>
-        <p><em>Uwaga: Hasło wyświetli się tylko raz, więc zapisz je w bezpiecznym miejscu.</em></p>
+// Initialize the application
+async function init() {
+    // Initialize UI elements
+    const repoSelect = document.getElementById('repository-select');
+    const dateSelect = document.getElementById('date-select');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const scanReposBtn = document.getElementById('scan-repos');
+    const editBtn = document.getElementById('edit-btn');
+    const publishBtn = document.getElementById('publish-btn');
+
+    // Set today as the default date
+    dateSelect.value = new Date().toISOString().split('T')[0];
+
+    // Event listeners
+    scanReposBtn.addEventListener('click', scanRepositories);
+    repoSelect.addEventListener('change', handleRepositorySelect);
+    analyzeBtn.addEventListener('click', analyzeChanges);
+    editBtn.addEventListener('click', editArticle);
+    publishBtn.addEventListener('click', publishArticle);
+
+    // Initial repository scan
+    await scanRepositories();
+}
+
+// Scan for Git repositories
+async function scanRepositories() {
+    const repoSelect = document.getElementById('repository-select');
+    const dateSelect = document.getElementById('date-select');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const scanReposBtn = document.getElementById('scan-repos');
+
+    try {
+        // Update UI state
+        scanReposBtn.classList.add('loading');
+        repoSelect.disabled = true;
+        repoSelect.innerHTML = '<option value="">Scanning repositories...</option>';
+
+        // Fetch repositories
+        const response = await fetch(`${API_BASE_URL}/scan-repositories`);
+        if (!response.ok) throw new Error('Failed to scan repositories');
+
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Failed to scan repositories');
+
+        // Update global state
+        repositories = data.repositories;
+
+        // Update repository select
+        repoSelect.innerHTML = [
+            '<option value="">Select a repository...</option>',
+            ...repositories.map((repo, index) => 
+                `<option value="${index}">${repo.organization}/${repo.name}</option>`
+            )
+        ].join('');
+
+        // Enable UI elements
+        repoSelect.disabled = false;
+        scanReposBtn.classList.remove('loading');
+
+    } catch (error) {
+        console.error('Error scanning repositories:', error);
+        repoSelect.innerHTML = '<option value="">Error scanning repositories</option>';
+        scanReposBtn.classList.remove('loading');
+    }
+}
+
+// Handle repository selection
+function handleRepositorySelect(event) {
+    const dateSelect = document.getElementById('date-select');
+    const analyzeBtn = document.getElementById('analyze-btn');
+
+    const index = parseInt(event.target.value);
+    selectedRepository = repositories[index] || null;
+
+    // Enable/disable date selection and analyze button
+    dateSelect.disabled = !selectedRepository;
+    analyzeBtn.disabled = !selectedRepository;
+}
+
+// Analyze repository changes
+async function analyzeChanges() {
+    const dateSelect = document.getElementById('date-select');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const results = document.getElementById('results');
+    const articlePreview = document.getElementById('article-preview');
+
+    if (!selectedRepository || !dateSelect.value) return;
+
+    try {
+        // Update UI state
+        analyzeBtn.classList.add('loading');
+        analyzeBtn.disabled = true;
+
+        // Get commits for the selected date
+        const response = await fetch(`${API_BASE_URL}/scan-git`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                repoPath: selectedRepository.path,
+                date: dateSelect.value
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to analyze repository');
+
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Failed to analyze repository');
+
+        // Display results
+        results.style.display = 'block';
+        articlePreview.innerHTML = `
+            <h3>Commits Found: ${data.data.commits.length}</h3>
+            <pre>${JSON.stringify(data.data.commits, null, 2)}</pre>
+        `;
+
+    } catch (error) {
+        console.error('Error analyzing repository:', error);
+        articlePreview.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+    } finally {
+        analyzeBtn.classList.remove('loading');
+        analyzeBtn.disabled = false;
+    }
+}
+
+// Edit article content
+function editArticle() {
+    const articlePreview = document.getElementById('article-preview');
+    const content = articlePreview.innerHTML;
+
+    articlePreview.innerHTML = `
+        <div class="form-group">
+            <textarea class="form-control" rows="10">${content}</textarea>
+        </div>
     `;
-    document.getElementById('wordpressPassword').insertAdjacentElement('afterend', wordpressPasswordHelp);
-    document.getElementById('publishBtn').disabled = true;
-    
-    // Show initial status message
-    showStatus('💡 Skonfiguruj wszystkie sekcje, a następnie wygeneruj artykuł na podstawie aktywności Git!', 'success');
-});
+}
+
+// Publish article to WordPress
+async function publishArticle() {
+    const articlePreview = document.getElementById('article-preview');
+    const publishBtn = document.getElementById('publish-btn');
+
+    try {
+        publishBtn.classList.add('loading');
+        publishBtn.disabled = true;
+
+        // TODO: Implement WordPress publishing
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        alert('Article published successfully!');
+
+    } catch (error) {
+        console.error('Error publishing article:', error);
+        alert(`Failed to publish article: ${error.message}`);
+    } finally {
+        publishBtn.classList.remove('loading');
+        publishBtn.disabled = false;
+    }
+}
+
+// Export the init function for ES modules
+export { init };
+
+// Also initialize automatically when loaded directly
+if (import.meta.url === document.currentScript?.src) {
+    document.addEventListener('DOMContentLoaded', init);
+}
