@@ -17,8 +17,22 @@
         API_URL: 'http://localhost:3001',
         OLLAMA_URL: 'http://localhost:11437',
         OLLAMA_MODEL: 'llama2',
+        WORDPRESS_URL: '<%= typeof WORDPRESS_URL !== "undefined" ? WORDPRESS_URL.replace(/'/g, "\\'") : "" %>',
+        WORDPRESS_USERNAME: '<%= typeof WORDPRESS_USERNAME !== "undefined" ? WORDPRESS_USERNAME.replace(/'/g, "\\'") : "" %>',
+        WORDPRESS_TOKEN: '<%= typeof WORDPRESS_TOKEN !== "undefined" ? WORDPRESS_TOKEN.replace(/'/g, "\\'") : "" %>',
         NODE_ENV: 'development'
       };
+      
+      // Log the configuration (without sensitive data)
+      (function() {
+        const config = {
+          ...window.APP_CONFIG,
+          WORDPRESS_TOKEN: window.APP_CONFIG.WORDPRESS_TOKEN ? '***' : 'not set',
+          WORDPRESS_URL: window.APP_CONFIG.WORDPRESS_URL || 'not set',
+          WORDPRESS_USERNAME: window.APP_CONFIG.WORDPRESS_USERNAME || 'not set'
+        };
+        console.log('App config loaded', config);
+      })();
     </script>
     <link rel="stylesheet" href="css/styles.css">
     
@@ -44,7 +58,10 @@
                     <div class="form-group">
                         <label for="wordpressUrl">URL WordPress</label>
                         <div class="input-with-button">
-                            <input type="url" id="wordpressUrl" placeholder="https://example.com" required>
+                            <input type="url" id="wordpressUrl" 
+                                   placeholder="https://example.com" 
+                                   data-default="<%= htmlWebpackPlugin.options.WORDPRESS_URL || '' %>"
+                                   required>
                             <button type="button" id="goToWordPressBtn" class="btn-icon" title="Przejdź do panelu WordPress">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -56,12 +73,27 @@
                     </div>
                     <div class="form-group">
                         <label for="wordpressUsername">Nazwa użytkownika</label>
-                        <input type="text" id="wordpressUsername" placeholder="admin" required>
+                        <input type="text" id="wordpressUsername" 
+                               placeholder="admin" 
+                               data-default="<%= htmlWebpackPlugin.options.WORDPRESS_USERNAME || '' %>"
+                               required>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="wordpressPassword">Application Password</label>
-                    <input type="password" id="wordpressPassword" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" required>
+                    <div class="input-with-button">
+                        <input type="password" 
+                               id="wordpressPassword" 
+                               placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" 
+                               data-default="<%= htmlWebpackPlugin.options.WORDPRESS_TOKEN || '' %>"
+                               required>
+                        <button type="button" id="togglePassword" class="btn-icon" title="Pokaż/ukryj hasło">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 <button class="btn" id="testWordPressBtn">
                     <span id="testWpText">🔍 Testuj połączenie</span>
@@ -78,11 +110,20 @@
                     </div>
                     <div class="form-group">
                         <label for="ollamaModel">Model</label>
-                        <select id="ollamaModel">
-                            <option value="mistral:7b">Mistral 7B</option>
-                            <option value="llama2:7b">Llama2 7B</option>
-                            <option value="codellama:7b">CodeLlama 7B</option>
-                        </select>
+                        <div class="input-with-button">
+                            <select id="ollamaModel" class="model-select" disabled>
+                                <option value="">Ładowanie modeli...</option>
+                            </select>
+                            <button type="button" id="refreshModelsBtn" class="btn-icon" title="Odśwież listę modeli">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <path d="M3 3v5h5"></path>
+                                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                                    <path d="M16 16h5v5"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="help-text" id="modelStatus">Pobieranie dostępnych modeli...</p>
                     </div>
                 </div>
                 <button class="btn" id="testOllamaBtn">

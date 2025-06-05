@@ -6,6 +6,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { execSync } = require('child_process');
 const axios = require('axios');
+const ejs = require('ejs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +23,13 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Configure EJS as the view engine
+app.engine('html', ejs.renderFile);
+app.set('view engine', 'html');
+app.set('views', path.join(__dirname, 'public'));
+
+// Serve static files
 app.use(express.static('public'));
 
 // Log all requests
@@ -237,22 +245,41 @@ class OllamaClient {
         log(`OllamaClient initialized with base URL: ${this.baseUrl}`, 'debug');
     }
 
+    async listModels() {
+        try {
+            const response = await axios.get(`${this.baseUrl}/api/tags`, {
+                timeout: 10000,
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            return response.data.models || [];
+        } catch (error) {
+            log(`Error listing models: ${error.message}`, 'error');
+            return [];
+        }
+    }
+
     async testConnection() {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/tags`);
+            const models = await this.listModels();
             return {
                 success: true,
-                models: response.data.models || []
+                models: models,
+                message: `Connected to Ollama. Found ${models.length} models.`
             };
         } catch (error) {
+            const errorMessage = error.response?.data?.error || error.message;
+            log(`Błąd połączenia z Ollama: ${errorMessage}`, 'error');
             return {
                 success: false,
-                error: error.message
+                error: errorMessage,
+                status: error.response?.status
             };
         }
     }
 
-    async generateArticle(prompt, model = 'mistral:7b') {
+    async generateArticle(prompt, model) {
         try {
             log(`Generowanie artykułu z modelem: ${model}`);
             const response = await axios.post(`${this.baseUrl}/api/generate`, {
@@ -285,91 +312,188 @@ class OllamaClient {
      * @param {string} model - The model to use for generation
      * @returns {Promise<Stream>} A readable stream of the generated content
      */
-    async generateArticleStream(prompt, model = 'llama2') {
+    async generateArticleStream(prompt, model = process.env.DEFAULT_MODEL) {
+        // Debug environment variables
+        log('Environment Variables:', 'debug');
+        log(`- OLLAMA_BASE_URL: ${process.env.OLLAMA_BASE_URL}`, 'debug');
+        log(`- DEFAULT_MODEL: ${process.env.DEFAULT_MODEL}`, 'debug');
+        log(`- Using model: ${model}`, 'debug');
+        log(`- Prompt length: ${prompt.length} characters`, 'debug');
+        const { PassThrough } = require('stream');
+        const stream = new PassThrough();
+        
         try {
-            log(`Rozpoczynanie generowania strumieniowego z modelem: ${model}`, 'debug');
+            log(`Starting streaming generation with model: ${model}`, 'debug');
             log(`Using Ollama base URL: ${this.baseUrl}`, 'debug');
             
-            // Create a new PassThrough stream
-            const { PassThrough } = require('stream');
-            const stream = new PassThrough();
+            // Verify the model is available
+            try {
+                const models = await this.listModels();
+                const modelExists = models.some(m => m.name === model || m.model === model);
+                if (!modelExists) {
+                    const error = new Error(`Model '${model}' not found. Available models: ${models.map(m => m.name || m.model).join(', ')}`);
+                    error.status = 404;
+                    throw error;
+                }
+            } catch (error) {
+                log(`Error checking models: ${error.message}`, 'error');
+                // Continue anyway, as the API might still work
+            }
             
             // Build the API URL
-            const apiUrl = new URL('/api/generate', this.baseUrl).toString();
+            const apiUrl = `${this.baseUrl}/api/generate`;
             log(`Making request to: ${apiUrl}`, 'debug');
             
-            try {
-                const response = await axios({
-                    method: 'post',
-                    url: apiUrl,
-                    data: {
-                        model: model,
-                        prompt: prompt,
-                        stream: true,
-                        options: {
-                            temperature: 0.7,
-                            top_p: 0.9,
-                            top_k: 40
-                        }
-                    },
-                    responseType: 'stream',
-                    timeout: 30000, // 30 second timeout
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                });
-
-                // Process the stream
-                let buffer = '';
-                response.data.on('data', (chunk) => {
-                    try {
-                        const chunkStr = chunk.toString();
-                        buffer += chunkStr;
-                        
-                        // Process complete lines
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
-                        
-                        for (const line of lines) {
-                            if (!line.trim()) continue;
-                            try {
-                                const data = JSON.parse(line);
-                                if (data.response) {
-                                    // Send each token as it's generated with proper JSON format
-                                    stream.write(JSON.stringify({ response: data.response }) + '\n');
-                                }
-                            } catch (e) {
-                                log(`Error parsing line: ${line}`, 'error');
-                                log(`Error details: ${e.message}`, 'debug');
-                            }
-                        }
-                    } catch (e) {
-                        log(`Error processing chunk: ${e.message}`, 'error');
-                    }
-                });
-                
-                response.data.on('end', () => {
-                    stream.push(null); // Signal end of stream
-                });
-                
-                response.data.on('error', (error) => {
-                    console.error('Stream error:', error);
-                    stream.emit('error', error);
-                });
-                
-                return stream;
-            } catch (error) {
-                log(`Error making request to Ollama API: ${error.message}`, 'error');
-                if (error.response) {
-                    log(`Ollama API response status: ${error.response.status}`, 'error');
-                    log(`Ollama API response data: ${JSON.stringify(error.response.data)}`, 'error');
+            const requestData = {
+                model: model,
+                prompt: prompt,
+                stream: true,
+                options: {
+                    temperature: 0.7,
+                    top_p: 0.9,
+                    top_k: 40,
+                    num_ctx: 2048
                 }
-                throw error;
+            };
+            
+            log(`Sending request with data: ${JSON.stringify({
+                ...requestData,
+                prompt: prompt.substring(0, 50) + '...' // Don't log full prompt
+            }, null, 2)}`, 'debug');
+            
+            // Create a new agent to avoid socket issues
+            const httpsAgent = new (require('https').Agent)({ 
+                rejectUnauthorized: false, // For self-signed certs
+                keepAlive: true
+            });
+            
+            const response = await axios({
+                method: 'post',
+                url: apiUrl,
+                data: requestData,
+                responseType: 'stream',
+                timeout: 120000, // 2 minute timeout
+                httpsAgent: apiUrl.startsWith('https') ? httpsAgent : undefined,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Connection': 'keep-alive'
+                },
+                maxBodyLength: Infinity,
+                maxContentLength: Infinity,
+                validateStatus: null // Don't throw on any status code
+            });
+            
+            log(`Received response with status: ${response.status}`, 'debug');
+            
+            if (response.status !== 200) {
+                let errorData = '';
+                
+                // Handle error response
+                return new Promise((_, reject) => {
+                    response.data.on('data', chunk => {
+                        try {
+                            const data = JSON.parse(chunk.toString());
+                            errorData = data.error || JSON.stringify(data);
+                        } catch (e) {
+                            errorData += chunk.toString();
+                        }
+                    });
+                    
+                    response.data.on('end', () => {
+                        const error = new Error(`Ollama API error: ${response.status} - ${errorData || 'No error details'}`);
+                        error.status = response.status;
+                        error.data = errorData;
+                        log(error.message, 'error');
+                        reject(error);
+                    });
+                    
+                    response.data.on('error', (err) => {
+                        log(`Error reading error response: ${err.message}`, 'error');
+                        reject(err);
+                    });
+                });
             }
+            
+            // Process the stream
+            let buffer = '';
+            
+            response.data.on('data', (chunk) => {
+                try {
+                    const chunkStr = chunk.toString();
+                    buffer += chunkStr;
+                    
+                    // Process complete lines
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                    
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const data = JSON.parse(line);
+                            if (data.response !== undefined) {
+                                // Send each token as it's generated with proper JSON format
+                                const safeData = { response: data.response };
+                                if (data.done) safeData.done = true;
+                                stream.write(JSON.stringify(safeData) + '\n');
+                            }
+                        } catch (e) {
+                            log(`Error parsing line: ${line}`, 'error');
+                            log(`Error details: ${e.message}`, 'debug');
+                        }
+                    }
+                } catch (e) {
+                    log(`Error processing chunk: ${e.message}`, 'error');
+                }
+            });
+            
+            response.data.on('end', () => {
+                log('Stream ended', 'debug');
+                stream.end();
+            });
+            
+            response.data.on('error', (error) => {
+                log(`Stream error: ${error.message}`, 'error');
+                stream.emit('error', error);
+            });
+            
+            return stream;
+            
         } catch (error) {
-            log(`Błąd generowania strumieniowego artykułu: ${error.message}`, 'error');
-            throw error;
+            // Handle different types of errors
+            let errorMessage = 'Unknown error';
+            let statusCode = 500;
+            
+            if (error.response) {
+                // Server responded with error status
+                statusCode = error.response.status;
+                errorMessage = `Ollama API error: ${statusCode}`;
+                if (error.response.data) {
+                    try {
+                        const errorData = typeof error.response.data === 'string' 
+                            ? error.response.data 
+                            : JSON.stringify(error.response.data);
+                        errorMessage += ` - ${errorData}`;
+                    } catch (e) {
+                        errorMessage += ' - Could not parse error response';
+                    }
+                }
+            } else if (error.request) {
+                // Request was made but no response received
+                errorMessage = 'No response from Ollama server. Please check if the server is running.';
+                if (error.code) errorMessage += ` (${error.code})`;
+            } else {
+                // Other errors
+                errorMessage = error.message || 'Unknown error';
+            }
+            
+            log(`Error in generateArticleStream: ${errorMessage}`, 'error');
+            
+            // Send error through the stream
+            stream.emit('error', new Error(errorMessage));
+            stream.end();
+            
+            return stream;
         }
     }
 }
@@ -403,20 +527,58 @@ class WordPressClient {
 
     async testConnection() {
         try {
-            const response = await axios.get(`${this.baseUrl}/wp-json/wp/v2/users/me`, {
-                headers: {
-                    'Authorization': `Basic ${this.authHeader}`
-                }
+            // Construct the full URL
+            const url = new URL('/wp-json/wp/v2/posts?per_page=1', this.baseUrl).toString();
+            log(`Testing WordPress connection to: ${url}`, 'debug');
+            
+            // Get authentication headers
+            const headers = this.getAuthHeader();
+            
+            // Log request details (without sensitive data)
+            log('Sending request with headers:', 'debug');
+            Object.entries(headers).forEach(([key]) => {
+                log(`- ${key}: ${key === 'Authorization' ? '***' : headers[key]}`, 'debug');
             });
-
+            
+            // Make the request
+            const response = await axios.get(url, { 
+                headers,
+                timeout: 10000 // 10 second timeout
+            });
+            
+            log(`WordPress API response status: ${response.status}`, 'debug');
+            
             return {
                 success: true,
-                user: response.data
+                status: response.status,
+                message: 'Połączenie z WordPressem udane!',
+                data: response.data
             };
         } catch (error) {
+            // Enhanced error handling
+            let errorDetails = 'Unknown error';
+            
+            if (error.response) {
+                // The request was made and the server responded with a status code
+                // that falls out of the range of 2xx
+                errorDetails = `Status: ${error.response.status} - ${JSON.stringify(error.response.data)}`;
+                log(`WordPress API Error Response: ${errorDetails}`, 'error');
+            } else if (error.request) {
+                // The request was made but no response was received
+                errorDetails = 'No response received from server';
+                log(`WordPress API Error: ${errorDetails}`, 'error');
+            } else {
+                // Something happened in setting up the request that triggered an Error
+                errorDetails = error.message;
+                log(`WordPress API Request Error: ${errorDetails}`, 'error');
+            }
+            
             return {
                 success: false,
-                error: error.response?.data?.message || error.message
+                status: error.response?.status || 500,
+                error: errorDetails,
+                message: error.response?.data?.message || error.message,
+                details: error.response?.data
             };
         }
     }
@@ -445,18 +607,75 @@ class WordPressClient {
 // Initialize services
 const gitScanner = new GitScanner();
 
+// Set default GitHub path from environment variables
+if (process.env.DEFAULT_GITHUB_PATH) {
+    gitScanner.setGitPath(process.env.DEFAULT_GITHUB_PATH);
+    log(`Ustawiono domyślną ścieżkę Git na: ${process.env.DEFAULT_GITHUB_PATH}`, 'info');
+} else if (process.env.GIT_PATH) {
+    gitScanner.setGitPath(process.env.GIT_PATH);
+    log(`Ustawiono ścieżkę Git z GIT_PATH: ${process.env.GIT_PATH}`, 'info');
+} else {
+    log('Nie ustawiono domyślnej ścieżki Git. Należy ją podać ręcznie.', 'warn');
+}
+
 // Initialize Ollama client with environment variable or default
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+let ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').trim();
+// Ensure URL has protocol
+if (!ollamaBaseUrl.startsWith('http')) {
+    ollamaBaseUrl = `http://${ollamaBaseUrl}`;
+}
+// Remove trailing slashes
+ollamaBaseUrl = ollamaBaseUrl.replace(/\/+$/, '');
+
 log(`Initializing Ollama client with URL: ${ollamaBaseUrl}`, 'info');
 const ollamaClient = new OllamaClient(ollamaBaseUrl);
 
-// Initialize WordPress client with token from environment
-const wpUrl = process.env.WORDPRESS_URL || '';
-const wpUsername = process.env.WORDPRESS_USERNAME || '';
-const wpToken = (process.env.WORDPRESS_TOKEN || '').replace(/["']/g, '').trim();
+// Test Ollama connection on startup
+(async () => {
+    try {
+        const result = await ollamaClient.testConnection();
+        if (result.success) {
+            log(`✅ Ollama connection successful. ${result.message}`, 'info');
+            log(`Available models: ${result.models.map(m => m.name || m.model).join(', ')}`, 'debug');
+        } else {
+            log(`⚠️  Ollama connection failed: ${result.error}`, 'warn');
+        }
+    } catch (error) {
+        log(`❌ Error testing Ollama connection: ${error.message}`, 'error');
+    }
+})();
 
-log(`Initializing WordPress client for: ${wpUrl}`, 'info');
-const wordpressClient = new WordPressClient(wpUrl, wpUsername, wpToken);
+// Initialize WordPress client with token from environment
+const wpUrl = (process.env.WORDPRESS_URL || '').trim();
+const wpUsername = (process.env.WORDPRESS_USERNAME || '').trim();
+const wpToken = (process.env.WORDPRESS_TOKEN || '').replace(/[\"']/g, '').trim();
+
+// Create a global WordPress client instance
+let wordpressClient = null;
+
+if (wpUrl && wpUsername && wpToken) {
+    log(`Initializing WordPress client for: ${wpUrl}`, 'info');
+    wordpressClient = new WordPressClient(wpUrl, wpUsername, wpToken);
+    
+    // Make wordpressClient available globally
+    global.wordpressClient = wordpressClient;
+    
+    // Test WordPress connection on startup
+    (async () => {
+        try {
+            const result = await wordpressClient.testConnection();
+            if (result.success) {
+                log('✅ WordPress connection successful', 'info');
+            } else {
+                log(`⚠️  WordPress connection failed: ${result.error}`, 'warn');
+            }
+        } catch (error) {
+            log(`❌ Error testing WordPress connection: ${error.message}`, 'error');
+        }
+    })();
+} else {
+    log('⚠️  WordPress client not initialized - missing required environment variables', 'warn');
+}
 
 // Helper function to update .env file
 const updateEnvFile = async (key, value) => {
@@ -543,18 +762,37 @@ app.get('/api/health', (req, res) => {
 app.post('/api/test-wordpress', async (req, res) => {
     try {
         const { url, username, password } = req.body;
-
+        
         if (!url || !username || !password) {
-            return res.status(400).json({
+            return res.status(400).json({ success: false, error: 'Missing required fields' });
+        }
+        
+        try {
+            // Test the connection with the provided credentials
+            const testClient = new WordPressClient(url, username, password);
+            const result = await testClient.testConnection();
+            
+            if (result.success) {
+                // Update environment variables
+                process.env.WORDPRESS_URL = url;
+                process.env.WORDPRESS_USERNAME = username;
+                process.env.WORDPRESS_TOKEN = password;
+                
+                // Update the global client
+                wordpressClient = new WordPressClient(url, username, password);
+                global.wordpressClient = wordpressClient;
+                
+                return res.json({ success: true, message: result.message });
+            } else {
+                return res.status(401).json({ success: false, error: result.error });
+            }
+        } catch (error) {
+            log(`Błąd testowania WordPress: ${error.message}`, 'error');
+            res.status(500).json({
                 success: false,
-                error: 'Brak wymaganych danych (url, username, password)'
+                error: error.message
             });
         }
-
-        const wpClient = new WordPressClient(url, username, password);
-        const result = await wpClient.testConnection();
-
-        res.json(result);
     } catch (error) {
         log(`Błąd testowania WordPress: ${error.message}`, 'error');
         res.status(500).json({
@@ -620,48 +858,80 @@ app.get('/api/generate-article-stream', async (req, res) => {
     
     try {
         console.log('Parsing request data...');
-        const requestData = JSON.parse(req.query.data);
-        console.log('Request data:', JSON.stringify(requestData, null, 2));
-        
-        const { gitData, ollamaUrl, model = 'llama2', customTitle, customPrompt } = requestData;
+        console.log('Query params:', req.query);
+        const dataParam = req.query.data;
+        if (!dataParam) {
+            throw new Error('Missing required parameter: data');
+        }
+        const requestData = JSON.parse(decodeURIComponent(dataParam));
+        console.log('Request data:', JSON.stringify({
+            ...requestData,
+            gitData: { ...requestData.gitData, projects: requestData.gitData.projects.map(p => ({
+                ...p,
+                commits: p.commits.map(c => ({
+                    ...c,
+                    message: c.message,
+                    files: c.files,
+                    stats: c.stats
+                }))
+            }))}
+        }, null, 2));
 
-        if (!gitData || !gitData.projects || gitData.projects.length === 0) {
-            console.error('No Git data provided');
-            return res.status(400).json({
-                success: false,
-                error: 'Brak danych Git do analizy'
-            });
+        // Update Ollama URL if provided
+        if (requestData.ollamaUrl) {
+            console.log(`Setting Ollama URL to: ${requestData.ollamaUrl}`);
+            // Instead of creating a new instance, update the existing one
+            ollamaClient.baseUrl = requestData.ollamaUrl.trim();
+            if (ollamaClient.baseUrl.endsWith('/')) {
+                ollamaClient.baseUrl = ollamaClient.baseUrl.slice(0, -1);
+            }
+            console.log(`Ollama client URL updated to: ${ollamaClient.baseUrl}`);
         }
 
-        if (ollamaUrl) {
-            console.log(`Setting Ollama URL to: ${ollamaUrl}`);
-            ollamaClient.baseUrl = ollamaUrl;
-        }
-
-        // Set headers for SSE
+        // Set response headers for SSE
         console.log('Setting SSE headers...');
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS'
-        });
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');  // Disable buffering for nginx
+        res.flushHeaders();
 
-        // Send initial message
+        // Send initial message to confirm connection
         console.log('Sending initial SSE message...');
-        res.write('event: status\ndata: Rozpoczynam generowanie artykułu...\n\n');
+        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Connected to server' })}\n\n`);
 
-        // Prepare the prompt
-        const project = gitData.projects[0];
+        // Generate the prompt
         const prompt = `Na podstawie poniższych zmian w repozytorium Git, stwórz szczegółowy artykuł techniczny w języku polskim. Uwzględnij kontekst zmian, ich znaczenie i potencjalny wpływ na projekt.
 
-${JSON.stringify(project, null, 2)}
+${JSON.stringify(requestData.gitData, null, 2)}
 
 Napisz kompletny artykuł w HTML:`;
+        console.log('Generated prompt length:', prompt.length);
+        console.log('First 200 chars:', prompt.substring(0, 200));
 
-        console.log('Generated prompt:', prompt.substring(0, 200) + '...');
+        // Get available models
+        const availableModels = (await ollamaClient.listModels()).map(m => m.name || m.model);
+        console.log('Available models:', availableModels);
+
+        // Get model from environment variables or request
+        const model = requestData.model || process.env.DEFAULT_MODEL;
+        
+        // Throw error if no model is specified
+        if (!model) {
+            throw new Error('No model specified. Please set DEFAULT_MODEL in your .env file or provide a model in the request.');
+        }
+        
+        // Check if model is available
+        if (!availableModels.includes(model)) {
+            throw new Error(`Model '${model}' not found in available models. Available models: ${availableModels.join(', ')}`);
+        }
+        
+        console.log(`Using model: ${model}`);
+        console.log('Environment variables:', {
+            OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
+            DEFAULT_MODEL: process.env.DEFAULT_MODEL,
+            NODE_ENV: process.env.NODE_ENV
+        });
         
         try {
             console.log('Calling Ollama generateArticleStream...');
@@ -846,14 +1116,30 @@ app.post('/api/publish-wordpress', async (req, res) => {
             gitData
         } = req.body;
 
-        if (!wpUrl || !wpUsername || !wpPassword || !article) {
+        if (!article) {
             return res.status(400).json({
                 success: false,
-                error: 'Brak wymaganych danych WordPress lub artykułu'
+                error: 'Brak treści artykułu'
             });
         }
 
-        const wpClient = new WordPressClient(wpUrl, wpUsername, wpPassword);
+        let wpClient;
+        
+        // Use global wordpressClient if no credentials provided
+        if (!wpUrl || !wpUsername || !wpPassword) {
+            if (!wordpressClient) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Brak poświadczeń WordPress. Proszę podać dane logowania lub skonfigurować połączenie w ustawieniach.'
+                });
+            }
+            wpClient = wordpressClient;
+            console.log('Using global WordPress client');
+        } else {
+            // Create a new client with provided credentials
+            wpClient = new WordPressClient(wpUrl, wpUsername, wpPassword);
+            console.log('Created new WordPress client with provided credentials');
+        }
 
         // Extract title from article if not provided
         let finalTitle = title;
@@ -914,6 +1200,15 @@ app.use((error, req, res, next) => {
     });
 });
 
+// Serve the main application
+app.get('/', (req, res) => {
+    res.render('index', {
+        WORDPRESS_URL: process.env.WORDPRESS_URL || '',
+        WORDPRESS_USERNAME: process.env.WORDPRESS_USERNAME || '',
+        WORDPRESS_TOKEN: process.env.WORDPRESS_TOKEN || ''
+    });
+});
+
 // 404 handler
 app.use((req, res) => {
     res.status(404).json({
@@ -927,6 +1222,9 @@ app.listen(PORT, () => {
     log(`🚀 Backend uruchomiony na porcie ${PORT}`);
     log(`📝 API dostępne pod: http://localhost:${PORT}/api`);
     log(`🏥 Health check: http://localhost:${PORT}/api/health`);
+    log(`WordPress URL: ${process.env.WORDPRESS_URL || 'Not set'}`);
+    log(`WordPress Username: ${process.env.WORDPRESS_USERNAME || 'Not set'}`);
+    log('WordPress Token: ' + (process.env.WORDPRESS_TOKEN ? '***' : 'Not set'));
 });
 
 module.exports = app;

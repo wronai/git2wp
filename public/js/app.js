@@ -1,5 +1,6 @@
 // Configuration
 const API_BASE_URL = window.APP_CONFIG.API_URL || window.location.origin;
+const OLLAMA_URL = window.APP_CONFIG.OLLAMA_URL || 'http://localhost:11434';
 
 // Global variables
 let gitData = {};
@@ -247,6 +248,13 @@ async function generateArticle() {
     previewSection.scrollIntoView({ behavior: 'smooth' });
     
     try {
+        // Get selected model
+        const selectedModel = document.getElementById('ollamaModel').value;
+        if (!selectedModel) {
+            showStatus('Proszę wybrać model z listy', 'error');
+            return;
+        }
+        
         // Format the data to match server's expected structure
         const requestData = {
             gitData: {
@@ -254,7 +262,7 @@ async function generateArticle() {
                 date: document.getElementById('selectedDate').value
             },
             ollamaUrl: ollamaUrl,
-            model: document.getElementById('ollamaModel').value,
+            model: selectedModel,
             customTitle: document.getElementById('articleTitle').value || undefined,
             customPrompt: getPromptPrefix()
         };
@@ -526,10 +534,207 @@ async function saveDefaultPrompt() {
     }
 }
 
+/**
+ * Fetches available models from Ollama API and updates the UI
+ */
+async function fetchOllamaModels() {
+    const ollamaUrl = document.getElementById('ollamaUrl').value || OLLAMA_URL;
+    const modelSelect = document.getElementById('ollamaModel');
+    const modelStatus = document.getElementById('modelStatus');
+    
+    // Clear previous state
+    modelStatus.textContent = 'Pobieranie dostępnych modeli...';
+    modelStatus.className = '';
+    modelStatus.classList.add('loading');
+    
+    // Clear existing options but keep the loading state
+    modelSelect.innerHTML = '';
+    const loadingOption = document.createElement('option');
+    loadingOption.value = '';
+    loadingOption.textContent = 'Ładowanie...';
+    loadingOption.disabled = true;
+    modelSelect.appendChild(loadingOption);
+    modelSelect.disabled = true;
+    
+    try {
+        const response = await fetch(`${ollamaUrl}/api/tags`);
+        if (!response.ok) {
+            throw new Error(`Błąd HTTP: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (!data.models || !Array.isArray(data.models) || data.models.length === 0) {
+            throw new Error('Brak dostępnych modeli na serwerze Ollama');
+        }
+        
+        // Sort models alphabetically
+        data.models.sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Clear existing options
+        modelSelect.innerHTML = '';
+        
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Wybierz model...';
+        defaultOption.disabled = true;
+        defaultOption.selected = true;
+        modelSelect.appendChild(defaultOption);
+        
+        // Add models to select
+        data.models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            // Add model size if available
+            if (model.size) {
+                const sizeInGB = (model.size / 1024 / 1024 / 1024).toFixed(1);
+                option.textContent += ` (${sizeInGB}GB)`;
+            }
+            modelSelect.appendChild(option);
+        });
+        
+        // Select the default model if available
+        const defaultModel = window.APP_CONFIG.OLLAMA_MODEL;
+        if (defaultModel) {
+            const matchingModel = data.models.find(m => m.name === defaultModel);
+            if (matchingModel) {
+                modelSelect.value = defaultModel;
+            }
+        }
+        
+        modelSelect.disabled = false;
+        modelStatus.textContent = `Załadowano ${data.models.length} modeli`;
+        modelStatus.className = 'success';
+        
+        // Auto-hide success message after 3 seconds
+        setTimeout(() => {
+            if (modelStatus.textContent.includes('Załadowano')) {
+                modelStatus.textContent = '';
+                modelStatus.className = '';
+            }
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Błąd podczas pobierania modeli:', error);
+        modelStatus.textContent = `Błąd: ${error.message}`;
+        modelStatus.className = 'error';
+        
+        // Add a retry button
+        const retryBtn = document.createElement('button');
+        retryBtn.textContent = 'Spróbuj ponownie';
+        retryBtn.className = 'btn-text';
+        retryBtn.onclick = fetchOllamaModels;
+        
+        modelStatus.appendChild(document.createElement('br'));
+        modelStatus.appendChild(retryBtn);
+        
+        // Add a default model option
+        modelSelect.innerHTML = '';
+        const errorOption = document.createElement('option');
+        errorOption.value = '';
+        errorOption.textContent = 'Błąd ładowania modeli';
+        errorOption.disabled = true;
+        modelSelect.appendChild(errorOption);
+    }
+}
+
+/**
+ * Updates the Ollama URL and refreshes the models list
+ */
+function updateOllamaUrl() {
+    const urlInput = document.getElementById('ollamaUrl');
+    if (urlInput.value) {
+        OLLAMA_URL = urlInput.value;
+        fetchOllamaModels();
+    }
+}
+
+/**
+ * Loads WordPress configuration from environment variables and populates the form
+ */
+function loadWordPressConfig() {
+    try {
+        const wordpressUrl = document.getElementById('wordpressUrl');
+        const wordpressUsername = document.getElementById('wordpressUsername');
+        const wordpressPassword = document.getElementById('wordpressPassword');
+        
+        // Get values from environment variables
+        const config = {
+            url: window.APP_CONFIG.WORDPRESS_URL || '',
+            username: window.APP_CONFIG.WORDPRESS_USERNAME || '',
+            token: window.APP_CONFIG.WORDPRESS_TOKEN || ''
+        };
+        
+        // Log the loaded config (without sensitive data)
+        console.log('Loading WordPress config:', {
+            url: config.url ? 'set' : 'not set',
+            username: config.username ? 'set' : 'not set',
+            token: config.token ? '***' : 'not set'
+        });
+        
+        // Set values if they exist
+        if (wordpressUrl) wordpressUrl.value = config.url;
+        if (wordpressUsername) wordpressUsername.value = config.username;
+        if (wordpressPassword) wordpressPassword.value = config.token;
+        
+        // Show status if any config is missing
+        const missingFields = [];
+        if (!config.url) missingFields.push('WordPress URL');
+        if (!config.username) missingFields.push('username');
+        if (!config.token) missingFields.push('application password');
+        
+        if (missingFields.length > 0) {
+            console.warn('Missing WordPress configuration:', missingFields.join(', '));
+        }
+        
+        return missingFields.length === 0;
+    } catch (error) {
+        console.error('Error loading WordPress config:', error);
+        return false;
+    }
+}
+
+/**
+ * Toggles password visibility
+ */
+function setupPasswordToggle() {
+    const toggleBtn = document.getElementById('togglePassword');
+    const passwordInput = document.getElementById('wordpressPassword');
+    
+    if (!toggleBtn || !passwordInput) return;
+    
+    toggleBtn.addEventListener('click', () => {
+        const type = passwordInput.type === 'password' ? 'text' : 'password';
+        passwordInput.type = type;
+        
+        // Toggle icon
+        const icon = toggleBtn.querySelector('svg');
+        if (icon) {
+            if (type === 'text') {
+                icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Load WordPress configuration from environment
+    loadWordPressConfig();
+    
     // Set up event listeners
     document.getElementById('goToWordPressBtn')?.addEventListener('click', openWordPressAdmin);
     document.getElementById('testWordPressBtn')?.addEventListener('click', testWordPressConnection);
+    document.getElementById('refreshModelsBtn')?.addEventListener('click', fetchOllamaModels);
+    document.getElementById('ollamaUrl')?.addEventListener('change', updateOllamaUrl);
+    
+    // Set up password toggle
+    setupPasswordToggle();
+    
+    // Initial fetch of models
+    fetchOllamaModels();
     document.getElementById('testOllamaBtn')?.addEventListener('click', testOllamaConnection);
     document.getElementById('scanGitBtn')?.addEventListener('click', scanGitProjects);
     document.getElementById('generateBtn')?.addEventListener('click', generateArticle);
