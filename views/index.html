@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light-theme">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WordPress Git Publisher</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/dark-theme.css" id="dark-theme" disabled>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script>
         // Configuration from server-side
         window.APP_CONFIG = {
@@ -15,12 +18,143 @@
             WORDPRESS_TOKEN: '<%= it.WORDPRESS_TOKEN ? "***" : "" %>',
             NODE_ENV: '<%= it.NODE_ENV || "development" %>'
         };
-        console.log('Application config:', window.APP_CONFIG);
+
+        // Theme management
+        document.addEventListener('DOMContentLoaded', function() {
+            const darkThemeLink = document.getElementById('dark-theme');
+            const themeToggle = document.getElementById('theme-toggle');
+            const isDarkMode = localStorage.getItem('darkMode') === 'true' || 
+                            (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && !localStorage.getItem('darkMode'));
+
+            function setTheme(isDark) {
+                if (isDark) {
+                    document.documentElement.classList.remove('light-theme');
+                    document.documentElement.classList.add('dark-theme');
+                    darkThemeLink.disabled = false;
+                    themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+                } else {
+                    document.documentElement.classList.remove('dark-theme');
+                    document.documentElement.classList.add('light-theme');
+                    darkThemeLink.disabled = true;
+                    themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+                }
+                localStorage.setItem('darkMode', isDark);
+            }
+
+            // Toggle theme on button click
+            themeToggle.addEventListener('click', () => {
+                const isDark = !document.documentElement.classList.contains('dark-theme');
+                setTheme(isDark);
+            });
+
+            // Set initial theme
+            setTheme(isDarkMode);
+
+            // Watch for system theme changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+                if (!localStorage.getItem('darkMode')) {
+                    setTheme(e.matches);
+                }
+            });
+        });
     </script>
 </head>
 <body>
-    <h1>WordPress Git Publisher</h1>
-    <p>Application is loading...</p>
-    <pre><%= JSON.stringify(it, null, 2) %></pre>
+    <div class="theme-switch">
+        <button id="theme-toggle" class="btn btn-primary" aria-label="Toggle dark mode" title="Toggle dark mode">
+            <i class="fas fa-moon"></i>
+        </button>
+    </div>
+    
+    <div class="container">
+        <header class="header">
+            <h1 class="header__title">WordPress Git Publisher</h1>
+            <p class="header__subtitle">Publish your Git repositories to WordPress</p>
+        </header>
+        
+        <main class="main-content">
+            <div id="app">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h2 class="h5 mb-0">Repository Selection</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <select id="repository-select" class="form-select" aria-label="Select repository">
+                                    <option value="">Select a repository...</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button id="scan-repos" class="btn btn-primary w-100">
+                                    <i class="fas fa-sync-alt me-2"></i>Scan Repositories
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="repository-details" class="mt-3" style="display: none;">
+                            <div class="mb-3">
+                                <label for="date-select" class="form-label">Select Commit Date:</label>
+                                <select id="date-select" class="form-select" disabled>
+                                    <option value="">Select a date...</option>
+                                </select>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button id="analyze-btn" class="btn btn-primary" disabled>
+                                    <i class="fas fa-search me-2"></i>Analyze Changes
+                                </button>
+                                <button id="generate-article-btn" class="btn btn-outline-primary" disabled>
+                                    <i class="fas fa-file-alt me-2"></i>Generate Article
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="statusMessage" class="alert" style="display: none;"></div>
+                
+                <div id="article-preview" class="card mt-4" style="display: none;">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2 class="h5 mb-0">Article Preview</h2>
+                        <div class="btn-group">
+                            <button id="edit-article-btn" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-edit me-1"></i>Edit
+                            </button>
+                            <button id="publish-article-btn" class="btn btn-sm btn-success">
+                                <i class="fas fa-paper-plane me-1"></i>Publish to WordPress
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="article-content" class="prose max-w-none">
+                            <!-- Article content will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/app.js" type="module"></script>
+    <script type="module">
+        // Initialize the application when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Import the init function from app.js
+                const { init } = await import('/js/app.js');
+                // Call the init function
+                await init();
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                // Show error message to the user
+                const statusMessage = document.getElementById('statusMessage');
+                if (statusMessage) {
+                    statusMessage.textContent = 'Error initializing application. Please check the console for details.';
+                    statusMessage.className = 'alert alert-danger';
+                    statusMessage.style.display = 'block';
+                }
+            }
+        });
+    </script>
 </body>
 </html>

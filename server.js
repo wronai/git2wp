@@ -335,7 +335,7 @@ function createHtmlTemplate(envVars, host) {
                     // Show status message
                     function showStatus(message, type = 'info') {
                         statusMessage.textContent = message;
-                        statusBar.className = `alert alert-${type} d-flex align-items-center`;
+                        statusBar.className = 'alert alert-' + type + ' d-flex align-items-center';
                         statusBar.style.display = 'flex';
                         
                         // Auto-hide success messages after 5 seconds
@@ -349,10 +349,10 @@ function createHtmlTemplate(envVars, host) {
                     // Add log entry
                     function addLogEntry(message, type = 'info') {
                         const entry = document.createElement('div');
-                        entry.className = `log-entry ${type}`;
+                        entry.className = 'log-entry ' + type;
                         
                         const timestamp = new Date().toLocaleTimeString();
-                        entry.innerHTML = `[${timestamp}] ${message}`;
+                        entry.innerHTML = '[' + timestamp + '] ' + message;
                         
                         logEntries.prepend(entry);
                         
