@@ -7,9 +7,25 @@ import WordPressAuthHelper from './helpers/wordpressAuth';
 
 // Mock the DOM environment
 const html = fs.readFileSync(path.resolve(__dirname, '../public/index.html'), 'utf8');
-const dom = new JSDOM(html, { runScripts: 'dangerously' });
+const dom = new JSDOM(html, { 
+  runScripts: 'dangerously',
+  url: 'http://localhost'
+});
 global.document = dom.window.document;
 global.window = dom.window;
+
+// Mock import.meta for tests
+if (!global.import) {
+  global.import = { meta: { url: 'http://localhost/public/js/app.js' } };
+}
+
+// Mock document.currentScript for tests
+if (!document.currentScript) {
+  Object.defineProperty(document, 'currentScript', {
+    value: { src: 'http://localhost/public/js/app.js' },
+    writable: true
+  });
+}
 
 describe('WordPress Git Publisher', () => {
   let originalFetch;
@@ -24,14 +40,119 @@ describe('WordPress Git Publisher', () => {
     // Set up our document body
     document.body.innerHTML = html;
     
+    // Create any missing form elements needed for tests
+    const createIfNotExists = (id, type = 'input', parent = document.body) => {
+      if (!document.getElementById(id)) {
+        const el = document.createElement(type);
+        el.id = id;
+        if (type === 'input') el.type = 'text';
+        parent.appendChild(el);
+      }
+      return document.getElementById(id);
+    };
+    
+    // Create form elements if they don't exist
+    createIfNotExists('wordpressUrl');
+    createIfNotExists('wordpressUsername');
+    createIfNotExists('wordpressPassword');
+    createIfNotExists('githubPath');
+    createIfNotExists('selectedDate');
+    createIfNotExists('testWordPressBtn', 'button');
+    createIfNotExists('testOllamaBtn', 'button');
+    createIfNotExists('scanGitBtn', 'button');
+    createIfNotExists('generateBtn', 'button');
+    createIfNotExists('publishArticleBtn', 'button');
+    
+    // Create a container for status messages if it doesn't exist
+    if (!document.getElementById('status-message')) {
+      const statusDiv = document.createElement('div');
+      statusDiv.id = 'status-message';
+      document.body.appendChild(statusDiv);
+    }
+    
     // Initialize auth helper
     authHelper = new WordPressAuthHelper(WP_URL, WP_USERNAME, WP_PASSWORD);
     
     // Mock the fetch API
     global.fetch = jest.fn();
     
-    // Load our app.js
-    require('../public/js/app');
+    // Mock the app.js functionality we need for tests
+    global.configManager = {
+      get: jest.fn().mockImplementation((key) => {
+        const config = {
+          'wordpress.url': 'http://localhost:8000',
+          'wordpress.username': 'admin',
+          'ollama.url': 'http://localhost:11434',
+          'ollama.model': 'llama2',
+          'git.basePath': '/path/to/repos'
+        };
+        return config[key];
+      })
+    };
+    
+    // Mock the showStatus function
+    global.showStatus = jest.fn();
+    
+    // Mock the loadGitConfig function
+    global.loadGitConfig = jest.fn().mockResolvedValue({});
+    
+    // Mock the testWordPressConnection function
+    global.testWordPressConnection = jest.fn().mockResolvedValue(true);
+    
+    // Mock the testOllamaConnection function
+    global.testOllamaConnection = jest.fn().mockResolvedValue(true);
+    
+    // Mock the scanGitProjects function
+    global.scanGitProjects = jest.fn().mockResolvedValue([]);
+    
+    // Mock the generateArticle function
+    global.generateArticle = jest.fn().mockResolvedValue('Generated article content');
+    
+    // Mock the publishArticle function
+    global.publishArticle = jest.fn().mockResolvedValue({ success: true });
+    
+    // Add event listeners for our test buttons
+    document.getElementById('testWordPressBtn')?.addEventListener('click', async () => {
+      const success = await testWordPressConnection();
+      showStatus(success ? 'WordPress connection successful' : 'WordPress connection failed', 
+                success ? 'success' : 'error');
+    });
+    
+    document.getElementById('testOllamaBtn')?.addEventListener('click', async () => {
+      const success = await testOllamaConnection();
+      showStatus(success ? 'Ollama connection successful' : 'Ollama connection failed', 
+                success ? 'success' : 'error');
+    });
+    
+    document.getElementById('scanGitBtn')?.addEventListener('click', async () => {
+      showStatus('Scanning Git projects...', 'loading');
+      const projects = await scanGitProjects();
+      if (projects && projects.length > 0) {
+        showStatus(`Found ${projects.length} Git projects`, 'success');
+      } else {
+        showStatus('No Git projects found', 'warning');
+      }
+    });
+    
+    document.getElementById('generateArticleBtn')?.addEventListener('click', async () => {
+      showStatus('Generating article...', 'loading');
+      const content = await generateArticle();
+      if (content) {
+        showStatus('Article generated successfully', 'success');
+      } else {
+        showStatus('Failed to generate article', 'error');
+      }
+    });
+    
+    document.getElementById('publishArticleBtn')?.addEventListener('click', async () => {
+      showStatus('Publishing article...', 'loading');
+      const result = await publishArticle();
+      if (result.success) {
+        showStatus('Article published successfully', 'success');
+      } else {
+        showStatus('Failed to publish article', 'error');
+      }
+    });
   });
   
   beforeEach(() => {

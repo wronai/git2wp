@@ -5,13 +5,19 @@ Git2WP - A command-line tool for publishing Git repository changes to WordPress.
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
-import requests
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import click
+import requests
 from dotenv import load_dotenv
+
+# Import the git2text module
+from . import git2text
 
 # Load environment variables
 load_dotenv(Path.home() / ".config" / "git2wp" / ".env")
@@ -343,109 +349,88 @@ def publish_to_wordpress(title: str, content: str, status: str = "draft"):
         return None
 
 
-def is_ollama_available() -> bool:
-    """Check if Ollama server is available."""
+def get_ollama_servers() -> List[Dict[str, str]]:
+    """Get list of available Ollama servers from environment."""
+    servers = []
+    
+    # Primary server
+    if os.getenv("OLLAMA_BASE_URL"):
+        servers.append({
+            'url': os.getenv("OLLAMA_BASE_URL"),
+            'model': os.getenv("DEFAULT_MODEL", "llama3:latest"),
+            'timeout': int(os.getenv("OLLAMA_TIMEOUT", 30000)) / 1000,  # Convert ms to seconds
+            'name': 'Primary Ollama Server'
+        })
+    
+    # Secondary server (if configured)
+    if os.getenv("SEC_OLLAMA_BASE_URL"):
+        servers.append({
+            'url': os.getenv("SEC_OLLAMA_BASE_URL"),
+            'model': os.getenv("SEC_DEFAULT_MODEL", "llama3:latest"),
+            'timeout': int(os.getenv("SEC_OLLAMA_TIMEOUT", 30000)) / 1000,
+            'name': 'Secondary Ollama Server'
+        })
+    
+    return servers
+
+def check_ollama_server(server: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Check if an Ollama server is available and return its info if available."""
     try:
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/version"
-        response = requests.get(ollama_url, timeout=5)
-        return response.status_code == 200
+        start_time = time.time()
+        response = requests.get(f"{server['url']}/api/version", timeout=5)
+        if response.status_code == 200:
+            response_time = time.time() - start_time
+            return {
+                **server,
+                'response_time': response_time,
+                'available': True
+            }
     except Exception as e:
         if CONFIG.get("wordpress_debug", False):
-            print(f"{Colors.YELLOW}Ollama server not available: {str(e)}{Colors.END}")
-        return False
+            print(f"{Colors.YELLOW}{server['name']} not available: {str(e)}{Colors.END}")
+    return None
+
+def get_fastest_ollama_server() -> Optional[Dict[str, Any]]:
+    """Get the fastest responding Ollama server."""
+    servers = get_ollama_servers()
+    if not servers:
+        return None
+    
+    # Check all servers in parallel
+    with ThreadPoolExecutor(max_workers=len(servers)) as executor:
+        results = list(executor.map(check_ollama_server, servers))
+    
+    # Filter out None results (unavailable servers) and sort by response time
+    available_servers = [s for s in results if s is not None and s.get('available', False)]
+    available_servers.sort(key=lambda x: x.get('response_time', float('inf')))
+    
+    if CONFIG.get("wordpress_debug", False):
+        for server in available_servers:
+            print(f"{Colors.GREEN}Available: {server['name']} (Response time: {server['response_time']:.2f}s){Colors.END}")
+    
+    return available_servers[0] if available_servers else None
 
 def generate_llm_summary(repo_name: str, commit_info: Dict[str, Any]) -> Tuple[str, str]:
-    """Generate a summary of changes using Ollama with fallback to simple formatting."""
-    # First check if Ollama is available
-    if not is_ollama_available():
-        print(f"{Colors.YELLOW}Ollama server not available, using simple formatting{Colors.END}")
-        return generate_simple_summary(repo_name, commit_info)
+    """Generate a summary of changes using the git2text module."""
+    debug = CONFIG.get("wordpress_debug", False)
     
     try:
-        # Prepare the prompt using the template from .env
-        prompt_template = os.getenv("PROMPT_TEMPLATE", "")
-        prompt_prefix = os.getenv("PROMPT_PREFIX", "")
+        # Generate the summary using the git2text module
+        content = git2text.generate_commit_summary(repo_name, commit_info, debug=debug)
         
-        # Safely get commit information with defaults
-        commit_sha = commit_info.get('short_sha', commit_info.get('short_hash', 'unknown'))
-        author = commit_info.get('author', commit_info.get('author_name', 'unknown'))
-        commit_date = commit_info.get('date', commit_info.get('commit_date', 'unknown'))
-        commit_message = commit_info.get('message', commit_info.get('subject', 'No commit message'))
+        # Extract the first line for the title
+        first_line = commit_info.get('message', 'Update').split('\n')[0][:100].strip()
+        title = f"{repo_name}: {first_line}" if first_line else f"{repo_name}: Update"
         
-        # Format the changed files for the prompt
-        changed_files = []
-        for change in commit_info.get("changed_files", []):
-            # Handle different possible field names for file changes
-            if isinstance(change, dict):
-                status = change.get('status', '?')
-                file_path = change.get('file', change.get('path', 'unknown'))
-                changed_files.append(f"{status} {file_path}")
-            else:
-                changed_files.append(str(change))
+        return title, content
         
-        changed_files_str = "\n".join(changed_files) if changed_files else "No files changed"
-        
-        # Create the full prompt
-        prompt = f"""{prompt_template}
-        
-Repository: {repo_name}
-Commit: {commit_sha}
-Author: {author}
-Date: {commit_date}
-Message: {commit_message}
-
-Changed files:
-{changed_files_str}
-
-{'-'*40}
-{prompt_prefix}"""
-        
-        if CONFIG.get("wordpress_debug", False):
-            print(f"{Colors.YELLOW}=== Ollama Prompt ==={Colors.END}")
-            print(prompt[:500] + (prompt[500:] and '...'))
-        
-        # Call Ollama API with a reasonable timeout
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/generate"
-        model = os.getenv("DEFAULT_MODEL", "llama3:latest")
-        
-        try:
-            response = requests.post(
-                ollama_url,
-                json={
-                    "model": model,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=30  # 30 seconds timeout
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                summary = result.get("response", "")
-                
-                if not summary.strip():
-                    summary = f"No summary generated. Original commit message: {commit_message}"
-                
-                # Create a title from the first line of the summary
-                first_line = summary.split('\n')[0][:100].strip()
-                title = f"{repo_name}: {first_line}" if first_line else f"{repo_name}: Update"
-                
-                return title, summary
-            else:
-                error_msg = f"Error from Ollama (HTTP {response.status_code}): {response.text}"
-                print(f"{Colors.RED}{error_msg}{Colors.END}")
-                raise Exception(error_msg)
-                
-        except requests.exceptions.RequestException as e:
-            print(f"{Colors.RED}Error connecting to Ollama: {str(e)}{Colors.END}")
-            return generate_simple_summary(repo_name, commit_info)
-            
     except Exception as e:
-        print(f"{Colors.RED}Error in generate_llm_summary: {str(e)}{Colors.END}")
-        if CONFIG.get("wordpress_debug", False):
-            import traceback
-            print(f"{Colors.YELLOW}Stack Trace:\n{traceback.format_exc()}{Colors.END}")
+        if debug:
+            print(f"{Colors.RED}Error generating LLM summary: {str(e)}{Colors.END}")
+        # Fall back to simple formatting
         return generate_simple_summary(repo_name, commit_info)
+    
+        # This block is now handled by the git2text module
 
 def generate_simple_summary(repo_name: str, commit_info: Dict[str, Any]) -> Tuple[str, str]:
     """Generate a simple summary when LLM is not available."""
