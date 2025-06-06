@@ -1,0 +1,75 @@
+# Test cases for Git2WP application
+
+# Test suite for repository scanning functionality
+repository_scan_tests:
+  - name: "Load home page"
+    description: "Verify that the home page loads correctly"
+    url: "/"
+    actions:
+      - action: "navigate"
+      - action: "waitForSelector"
+        selector: "#scan-repos"
+        state: "visible"
+    assertions:
+      - selector: "h1"
+        text: "Git2WP - WordPress Git Publisher"
+
+  - name: "Test repository scan button"
+    description: "Verify that clicking the scan button triggers repository scan"
+    actions:
+      - action: "click"
+        selector: "#scan-repos"
+      - action: "waitForResponse"
+        url: "/api/git/repos"
+    assertions:
+      - selector: "#scan-repos .spinner-border"
+        exists: true
+      - selector: "#repository-select"
+        isDisabled: false
+
+  - name: "Test repository selection"
+    description: "Verify that selecting a repository enables the analyze button"
+    actions:
+      - action: "selectOption"
+        selector: "#repository-select"
+        value: "0"
+      - action: "fill"
+        selector: "#date-select"
+        value: "2025-06-06"
+    assertions:
+      - selector: "#analyze-btn"
+        isDisabled: false
+
+# Test suite for form validation
+form_validation_tests:
+  - name: "Test form validation with empty fields"
+    description: "Verify that form validation works when required fields are empty"
+    actions:
+      - action: "click"
+        selector: "#analyze-btn"
+    assertions:
+      - selector: ".alert-danger"
+        exists: true
+        text: "Please select a repository"
+
+# Test suite for API responses
+api_tests:
+  - name: "Test successful repository scan"
+    description: "Verify that the API returns a successful response"
+    request:
+      method: "GET"
+      url: "/api/git/repos"
+    assertions:
+      - status: 200
+      - jsonPath: "$.success"
+        equals: true
+
+  - name: "Test repository details endpoint"
+    description: "Verify that repository details can be retrieved"
+    request:
+      method: "GET"
+      url: "/api/git/repos/1"
+    assertions:
+      - status: 200
+      - jsonPath: "$.data.name"
+        exists: true
