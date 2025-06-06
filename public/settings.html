@@ -132,14 +132,36 @@
     
     <!-- Main App Script (loaded as module) -->
     <script type="module">
-        // Import the SettingsPanel class
+        // Import the SettingsPanel class and ConfigManager
         import { SettingsPanel } from '/js/components/settings-panel.js';
+        import { ConfigManager } from '/js/config-manager.js';
+        
+        // Initialize ConfigManager and make it globally available
+        let configManager;
+        try {
+            configManager = new ConfigManager();
+            window.configManager = configManager;
+            console.log('ConfigManager initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize ConfigManager:', error);
+            document.addEventListener('DOMContentLoaded', () => {
+                alert('Failed to initialize configuration. Please check the console for details.');
+            });
+            throw error;
+        }
         
         // Wait for DOM to be fully loaded
         document.addEventListener('DOMContentLoaded', function() {
+            let settingsPanel;
+            
             try {
+                // Check if ConfigManager is available
+                if (!configManager) {
+                    throw new Error('ConfigManager initialization failed');
+                }
+                
                 // Initialize the settings panel
-                const settingsPanel = new SettingsPanel('settings-panel', {
+                settingsPanel = new SettingsPanel('settings-panel', {
                     saveButtonText: 'Save Changes',
                     resetButtonText: 'Reset to Defaults',
                     loadingText: 'Loading settings...',
@@ -150,27 +172,26 @@
                 
                 // Make available globally for debugging
                 window.settingsPanel = settingsPanel;
+                
+                // Handle navigation clicks
+                document.querySelectorAll('.settings-nav a').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        
+                        // Update active state
+                        document.querySelectorAll('.settings-nav a').forEach(el => el.classList.remove('active'));
+                        this.classList.add('active');
+                        
+                        // Here you would typically load different settings sections
+                        // For now, we're just showing the main settings panel
+                    });
+                });
+                
             } catch (error) {
                 console.error('Error initializing settings panel:', error);
                 alert('Failed to initialize settings. Please check the console for details.');
+                return;
             }
-            
-            // Make it available globally for debugging
-            window.settingsPanel = settingsPanel;
-            
-            // Handle navigation clicks
-            document.querySelectorAll('.settings-nav a').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    
-                    // Update active state
-                    document.querySelectorAll('.settings-nav a').forEach(el => el.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Here you would typically load different settings sections
-                    // For now, we're just showing the main settings panel
-                });
-            });
         });
     </script>
 </body>

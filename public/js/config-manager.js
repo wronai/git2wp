@@ -173,22 +173,28 @@ class ConfigManager {
     }
 }
 
-// Create a singleton instance
-const configManager = new ConfigManager();
+// Export the ConfigManager class for ES modules
+export { ConfigManager };
 
-// Export for ES modules
-export { configManager };
-
-// Also make available globally for non-module scripts
+// For non-module scripts
 if (typeof window !== 'undefined') {
-    window.configManager = configManager;
+    window.ConfigManager = ConfigManager;
+    // Don't create a global instance here, let the module do it
 }
 
-// Auto-initialize if included directly in a script tag
-if (document.currentScript && document.currentScript.getAttribute('data-auto-init') !== 'false') {
-    document.addEventListener('DOMContentLoaded', () => {
-        configManager.load().catch(console.error);
-    });
+// Only create and expose the instance if we're not in a module environment
+if (typeof window !== 'undefined') {
+    const configManager = new ConfigManager();
+    
+    // Make available globally for non-module scripts
+    window.configManager = configManager;
+    
+    // Auto-initialize if included directly in a script tag
+    if (document.currentScript && document.currentScript.getAttribute('data-auto-init') !== 'false') {
+        document.addEventListener('DOMContentLoaded', () => {
+            configManager.load().catch(console.error);
+        });
+    }
 }
 
 export default configManager;

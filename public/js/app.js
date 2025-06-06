@@ -49,27 +49,35 @@ function showStatus(message, type = 'loading') {
     const statusDiv = document.getElementById('statusMessage');
     if (!statusDiv) return;
     
-    // Always show the status div when called
-    statusDiv.style.display = 'flex';
-    statusDiv.className = `status status--${type}`;
-    statusDiv.innerHTML = `
-        <div class="status-content">
-            ${type === 'loading' ? '⏳' : type === 'success' ? '✅' : '❌'}
-            <span>${message}</span>
-        </div>
-    `;
+    // Clear previous classes and set base alert class
+    statusDiv.className = 'alert';
     
-    // Auto-hide success messages after 5 seconds
-    if (type !== 'loading') {
+    // Add appropriate class based on type
+    if (type === 'success') {
+        statusDiv.classList.add('alert-success');
+    } else if (type === 'error') {
+        statusDiv.classList.add('alert-error');
+    } else {
+        statusDiv.classList.add('alert-info');
+    }
+    
+    // Set the message
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+    statusDiv.style.opacity = '1';
+    
+    // Auto-hide after 5 seconds if it's not an error
+    if (type !== 'error') {
         setTimeout(() => {
-            if (statusDiv.className.includes(`status--${type}`)) {
-                statusDiv.style.animation = 'fadeOut 0.3s ease-out';
+            if (statusDiv.textContent === message) {
+                // Fade out effect
+                statusDiv.style.transition = 'opacity 0.5s ease';
+                statusDiv.style.opacity = '0';
+                
+                // Hide after fade out
                 setTimeout(() => {
                     statusDiv.style.display = 'none';
-                    statusDiv.className = 'status';
-                    statusDiv.innerHTML = '';
-                    statusDiv.style.animation = '';
-                }, 300);
+                }, 500);
             }
         }, 5000);
     }
@@ -433,48 +441,7 @@ async function generateAndPublishArticle() {
     }
 }
 
-/**
- * Publishes the generated article to WordPress
- */
-async function publishArticle() {
-    if (!generatedArticle) {
-        showStatus('Brak wygenerowanego artykułu', 'error');
-        return;
-    }
-    
-    const wordpressUrl = document.getElementById('wordpressUrl').value;
-    const username = document.getElementById('wordpressUsername').value;
-    const password = document.getElementById('wordpressPassword').value;
-    const title = document.getElementById('articleTitle').value || `Podsumowanie zmian w projekcie ${gitData.projects[selectedProject].name}`;
-    
-    showStatus('Publikowanie artykułu...', 'loading');
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/publish-wordpress`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                wordpressUrl,
-                username,
-                password,
-                title,
-                content: generatedArticle
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            showStatus('✅ Artykuł opublikowany pomyślnie!', 'success');
-        } else {
-            showStatus(`❌ Błąd: ${data.error || 'Nieznany błąd'}`, 'error');
-        }
-    } catch (error) {
-        showStatus(`❌ Błąd: ${error.message}`, 'error');
-    }
-}
+
 
 // Function to open WordPress admin
 function openWordPressAdmin() {
@@ -754,67 +721,228 @@ function setupPasswordToggle() {
 
 // Initialize the application
 async function init() {
-    // Initialize UI elements
-    const repoSelect = document.getElementById('repository-select');
-    const dateSelect = document.getElementById('date-select');
-    const analyzeBtn = document.getElementById('analyze-btn');
-    const scanReposBtn = document.getElementById('scan-repos');
-    const editBtn = document.getElementById('edit-btn');
-    const publishBtn = document.getElementById('publish-btn');
+    try {
+        console.log('Initializing application...');
+        
+        // Initialize UI elements
+        const repoSelect = document.getElementById('repository-select');
+        const dateSelect = document.getElementById('date-select');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const scanReposBtn = document.getElementById('scan-repos');
+        const editArticleBtn = document.getElementById('edit-article-btn');
+        const publishArticleBtn = document.getElementById('publish-article-btn');
+        const generateArticleBtn = document.getElementById('generate-article-btn');
+        const repositoryDetails = document.getElementById('repository-details');
+        const articlePreview = document.getElementById('article-preview');
+        const articleContent = document.getElementById('article-content');
 
-    // Set today as the default date
-    dateSelect.value = new Date().toISOString().split('T')[0];
+        if (!repoSelect || !dateSelect || !analyzeBtn || !scanReposBtn || !editArticleBtn || !publishArticleBtn || !generateArticleBtn) {
+            console.error('One or more required elements not found');
+            return;
+        }
 
-    // Event listeners
-    scanReposBtn.addEventListener('click', scanRepositories);
-    repoSelect.addEventListener('change', handleRepositorySelect);
-    analyzeBtn.addEventListener('click', analyzeChanges);
-    editBtn.addEventListener('click', editArticle);
-    publishBtn.addEventListener('click', publishArticle);
+        console.log('All UI elements found');
 
-    // Initial repository scan
-    await scanRepositories();
+        // Event listeners
+        scanReposBtn.addEventListener('click', async (e) => {
+            console.log('Scan repositories button clicked');
+            e.preventDefault();
+            try {
+                await scanRepositories();
+                // Show repository details section after successful scan
+                if (repositoryDetails) {
+                    repositoryDetails.style.display = 'block';
+                }
+            } catch (err) {
+                console.error('Error in scanRepositories:', err);
+                showStatus(`Error scanning repositories: ${err.message}`, 'error');
+            }
+        });
+        
+        // Repository selection handler
+        if (repoSelect) {
+            repoSelect.addEventListener('change', (e) => {
+                const selectedIndex = e.target.value;
+                if (selectedIndex) {
+                    // Enable analyze button when a repository is selected
+                    if (analyzeBtn) analyzeBtn.disabled = false;
+                    if (generateArticleBtn) generateArticleBtn.disabled = false;
+                    
+                    // Show repository details if not already visible
+                    if (repositoryDetails) {
+                        repositoryDetails.style.display = 'block';
+                    }
+                } else {
+                    // Disable buttons when no repository is selected
+                    if (analyzeBtn) analyzeBtn.disabled = true;
+                    if (generateArticleBtn) generateArticleBtn.disabled = true;
+                }
+            });
+        }
+
+        // Analyze button click handler
+        if (analyzeBtn) {
+            analyzeBtn.addEventListener('click', async () => {
+                try {
+                    await analyzeChanges();
+                    // Show article preview after successful analysis
+                    if (articlePreview) {
+                        articlePreview.style.display = 'block';
+                    }
+                } catch (err) {
+                    console.error('Error analyzing changes:', err);
+                    showStatus(`Error analyzing changes: ${err.message}`, 'error');
+                }
+            });
+        }
+
+        // Generate article button click handler
+        if (generateArticleBtn) {
+            generateArticleBtn.addEventListener('click', async () => {
+                try {
+                    await generateArticle();
+                    // Show article preview after generating article
+                    if (articlePreview) {
+                        articlePreview.style.display = 'block';
+                    }
+                } catch (err) {
+                    console.error('Error generating article:', err);
+                    showStatus(`Error generating article: ${err.message}`, 'error');
+                }
+            });
+        }
+
+        // Edit article button click handler
+        if (editArticleBtn) {
+            editArticleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                editArticle();
+            });
+        }
+
+        // Publish article button click handler
+        if (publishArticleBtn) {
+            publishArticleBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                try {
+                    await publishArticle();
+                    showStatus('Article published successfully!', 'success');
+                } catch (err) {
+                    console.error('Error publishing article:', err);
+                    showStatus(`Error publishing article: ${err.message}`, 'error');
+                }
+            });
+        }
+
+        console.log('Event listeners attached');
+
+        // Initial repository scan
+        console.log('Starting initial repository scan...');
+        try {
+            await scanRepositories();
+            // Show repository details after initial scan
+            if (repositoryDetails) {
+                repositoryDetails.style.display = 'block';
+            }
+            console.log('Initial repository scan completed');
+        } catch (error) {
+            console.error('Error during initial repository scan:', error);
+            showStatus(`Error during initial repository scan: ${error.message}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error during initialization:', error);
+        showStatus(`Initialization error: ${error.message}`, 'error');
+    }
 }
 
 // Scan for Git repositories
 async function scanRepositories() {
+    console.log('Starting repository scan...');
     const repoSelect = document.getElementById('repository-select');
     const dateSelect = document.getElementById('date-select');
     const analyzeBtn = document.getElementById('analyze-btn');
     const scanReposBtn = document.getElementById('scan-repos');
+    const generateArticleBtn = document.getElementById('generate-article-btn');
+
+    if (!repoSelect || !scanReposBtn) {
+        console.error('Required elements not found');
+        return [];
+    }
 
     try {
+        console.log('Updating UI for scan...');
         // Update UI state
-        scanReposBtn.classList.add('loading');
-        repoSelect.disabled = true;
-        repoSelect.innerHTML = '<option value="">Scanning repositories...</option>';
+        if (scanReposBtn) {
+            scanReposBtn.disabled = true;
+            scanReposBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Scanning...';
+        }
+        
+        if (repoSelect) {
+            repoSelect.disabled = true;
+            repoSelect.innerHTML = '<option value="">Scanning repositories...</option>';
+        }
 
+        // Disable buttons during scan
+        if (analyzeBtn) analyzeBtn.disabled = true;
+        if (generateArticleBtn) generateArticleBtn.disabled = true;
+
+        console.log('Making API request to:', `${API_BASE_URL}/git/repos`);
         // Fetch repositories
-        const response = await fetch(`${API_BASE_URL}/scan-repositories`);
-        if (!response.ok) throw new Error('Failed to scan repositories');
+        const response = await fetch(`${API_BASE_URL}/git/repos`);
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API error response:', errorText);
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         const data = await response.json();
-        if (!data.success) throw new Error(data.error || 'Failed to scan repositories');
+        console.log('API response data:', data);
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to scan repositories');
+        }
 
         // Update global state
-        repositories = data.repositories;
+        repositories = data.repositories || [];
+        console.log(`Found ${repositories.length} repositories`);
 
         // Update repository select
-        repoSelect.innerHTML = [
-            '<option value="">Select a repository...</option>',
-            ...repositories.map((repo, index) => 
-                `<option value="${index}">${repo.organization}/${repo.name}</option>`
-            )
-        ].join('');
+        if (repoSelect) {
+            repoSelect.innerHTML = [
+                '<option value="">Select a repository...</option>',
+                ...repositories.map((repo, index) => {
+                    const repoName = repo.organization ? 
+                        `${repo.organization}/${repo.name}` : 
+                        repo.name;
+                    return `<option value="${index}">${repoName}</option>`;
+                })
+            ].join('');
+            repoSelect.disabled = false;
+        }
 
-        // Enable UI elements
-        repoSelect.disabled = false;
-        scanReposBtn.classList.remove('loading');
+        // Show success message
+        showStatus(`Found ${repositories.length} repositories`, 'success');
+        console.log('Repository scan completed successfully');
+        
+        return repositories;
 
     } catch (error) {
         console.error('Error scanning repositories:', error);
-        repoSelect.innerHTML = '<option value="">Error scanning repositories</option>';
-        scanReposBtn.classList.remove('loading');
+        if (repoSelect) {
+            repoSelect.innerHTML = '<option value="">Error loading repositories</option>';
+        }
+        // Show error to user
+        showStatus(`Error scanning repositories: ${error.message}`, 'error');
+        throw error; // Re-throw to be handled by the caller
+    } finally {
+        // Reset button state
+        if (scanReposBtn) {
+            scanReposBtn.disabled = false;
+            scanReposBtn.innerHTML = '<i class="fas fa-sync-alt me-2"></i>Scan Repositories';
+        }
     }
 }
 
@@ -822,12 +950,55 @@ async function scanRepositories() {
 function handleRepositorySelect(event) {
     const dateSelect = document.getElementById('date-select');
     const analyzeBtn = document.getElementById('analyze-btn');
-
-    const index = parseInt(event.target.value);
+    const generateArticleBtn = document.getElementById('generate-article-btn');
+    const repositoryDetails = document.getElementById('repository-details');
+    const articlePreview = document.getElementById('article-preview');
+    
+    const selectedIndex = event.target.value;
+    
+    if (selectedIndex === '') {
+        // No repository selected
+        selectedRepository = null;
+        if (analyzeBtn) analyzeBtn.disabled = true;
+        if (generateArticleBtn) generateArticleBtn.disabled = true;
+        if (dateSelect) dateSelect.disabled = true;
+        if (repositoryDetails) repositoryDetails.style.display = 'none';
+        if (articlePreview) articlePreview.style.display = 'none';
+        return;
+    }
+    
+    // Get the selected repository
+    const index = parseInt(selectedIndex);
     selectedRepository = repositories[index] || null;
-
-    // Enable/disable date selection and analyze button
-    dateSelect.disabled = !selectedRepository;
+    
+    if (!selectedRepository) {
+        showStatus('Selected repository not found', 'error');
+        return;
+    }
+    
+    console.log('Selected repository:', selectedRepository);
+    
+    // Update UI based on selection
+    if (repositoryDetails) {
+        repositoryDetails.style.display = 'block';
+    }
+    
+    if (dateSelect) {
+        dateSelect.disabled = false;
+        // Set default date to today
+        dateSelect.value = new Date().toISOString().split('T')[0];
+    }
+    
+    if (analyzeBtn) analyzeBtn.disabled = false;
+    if (generateArticleBtn) generateArticleBtn.disabled = false;
+    
+    // Hide article preview when changing repository
+    if (articlePreview) {
+        articlePreview.style.display = 'none';
+    }
+    
+    // Show success message
+    showStatus(`Selected repository: ${selectedRepository.organization ? selectedRepository.organization + '/' : ''}${selectedRepository.name}`, 'success');
     analyzeBtn.disabled = !selectedRepository;
 }
 
@@ -956,10 +1127,29 @@ async function publishArticle() {
     }
 }
 
+// Initialize the application when the script loads
+(async function() {
+    try {
+        // Wait for the DOM to be fully loaded
+        if (document.readyState === 'loading') {
+            await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+        }
+        
+        console.log('Initializing application...');
+        await init();
+        console.log('Application initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize application:', error);
+        
+        // Show error message to the user
+        const statusMessage = document.getElementById('statusMessage');
+        if (statusMessage) {
+            statusMessage.textContent = 'Error initializing application. Please check the console for details.';
+            statusMessage.className = 'alert alert-danger';
+            statusMessage.style.display = 'block';
+        }
+    }
+})();
+
 // Export the init function for ES modules
 export { init };
-
-// Also initialize automatically when loaded directly
-if (import.meta.url === document.currentScript?.src) {
-    document.addEventListener('DOMContentLoaded', init);
-}

@@ -1,0 +1,122 @@
+/* Dark Theme Variables */
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --text-primary: #e6e6e6;
+  --text-secondary: #b3b3b3;
+  --accent: #4cc9f0;
+  --accent-hover: #4895ef;
+  --card-bg: #0f3460;
+  --border-color: #2d3748;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --error: #f87171;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+/* Dark Theme Overrides */
+body.dark-theme {
+  background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%) !important;
+  color: var(--text-primary);
+}
+
+.dark-theme .container {
+  background: rgba(26, 26, 46, 0.95);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: var(--text-primary);
+}
+
+.dark-theme .card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-theme .form-control {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-theme .form-control:focus {
+  background-color: var(--bg-secondary);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.dark-theme .btn-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dark-theme .btn-primary:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.dark-theme .table {
+  color: var(--text-primary);
+}
+
+.dark-theme .table th,
+.dark-theme .table td {
+  border-color: var(--border-color);
+}
+
+.dark-theme .alert {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-theme .nav-tabs .nav-link {
+  color: var(--text-secondary);
+}
+
+.dark-theme .nav-tabs .nav-link.active {
+  color: var(--accent);
+  background-color: var(--bg-primary);
+  border-color: var(--border-color) var(--border-color) var(--bg-primary);
+}
+
+.dark-theme .modal-content {
+  background-color: var(--bg-primary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-theme .modal-header,
+.dark-theme .modal-footer {
+  border-color: var(--border-color);
+}
+
+/* Toggle Switch */
+.theme-switch {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.theme-switch .btn {
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: white;
+  border: none;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.theme-switch .btn:hover {
+  transform: scale(1.1);
+  background: var(--accent-hover);
+}
